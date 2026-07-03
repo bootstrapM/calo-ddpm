@@ -220,11 +220,16 @@ reads
   x_s &= m \odot x_s^{\mathrm{known}} + (1-m) \odot x_s^{\mathrm{dead}},
 \end{align}
 with $x_s^{\mathrm{known}}$ as in Eq.~(\ref{eq:repaint-known}) (same
-$\tau_{k-1}$ convention) and step size $\alpha = 1$.  The gradient
-requires one backward pass through $\epsilon_\theta$ per step; the prior
-network weights remain frozen, and differentiation is with respect to
-$x_t$ only.  Exact data consistency of the known region follows from the
-projection as for RePaint.
+$\tau_{k-1}$ convention) and step size $\alpha = 1$.  Note the division
+of roles: the residual $\mathcal{R}$ is evaluated on the \emph{observed}
+pixels, while the correction acts on the \emph{dead} pixels---the two
+regions being coupled through the network Jacobian, which is what allows
+observed-data consistency to steer the reconstruction inside the dead
+region (the known pixels themselves are overwritten by the projection).
+The gradient requires one backward pass through $\epsilon_\theta$ per
+step; the prior network weights remain frozen, and differentiation is
+with respect to $x_t$ only.  Exact data consistency of the known region
+follows from the projection as for RePaint.
 
 \subsubsection{$\Pi$GDM}
 \label{sec:inpainting:pigdm}

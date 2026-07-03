@@ -5,14 +5,19 @@ One reverse step s -> s-1:
 
   1. x0hat = x0hat_theta(x_s)                        (Tweedie denoiser)
   2. unconditional ancestral step:  x'_{s-1} ~ p_theta(x_{s-1} | x_s)
-  3. manifold-constrained gradient on the DEAD region, differentiated
-     THROUGH the network:
-         g = grad_{x_s} || M * (y - x0hat(x_s)) ||_2
-     (following the official implementation, the gradient of the l2 NORM —
-      not the squared norm — is used, which self-normalizes the step; the
-      overall step size alpha is a hyperparameter, default 1.0)
-  4. RePaint-style data consistency projection of the known region at
-     level s-1 (same s-1 convention/fix as repaint.py):
+  3. manifold-constrained gradient: the measurement-consistency residual
+     is evaluated on the KNOWN region,
+         R(x_s) = || M * (y - x0hat(x_s)) ||_2 ,
+     and differentiated THROUGH the network w.r.t. the full x_s,
+         g = grad_{x_s} R(x_s),
+     so g is nonzero everywhere -- known-region consistency couples to
+     the dead pixels via the network Jacobian.  (Following the official
+     implementation, the gradient of the l2 NORM — not the squared
+     norm — is used, which self-normalizes the step; the overall step
+     size alpha is a hyperparameter, default 1.0.)
+  4. The correction is APPLIED only to the dead region — the known
+     region is overwritten by the RePaint-style projection at level s-1
+     (same s-1 convention/fix as repaint.py) anyway:
          x_{s-1} = M * q_sample(s-1, y) + (1 - M) * (x'_{s-1} - alpha * g)
 
 At the final step the projection makes the known region exactly y, and the
