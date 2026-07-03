@@ -160,8 +160,10 @@ def main():
 
     t_start = datetime.datetime.now()
     for i in range(start, n_img):
+        # np.array(..., copy) -> writable buffer; the events file is a
+        # read-only memmap and torch.from_numpy warns on non-writable input
         ev_gev = torch.from_numpy(
-            np.asarray(events[args.image_offset + i], dtype=np.float32)
+            np.array(events[args.image_offset + i], dtype=np.float32)
         ).to(device).unsqueeze(0)                       # (1, 24, 64)
         y = lognorm.normalize(ev_gev)                   # log space
 
