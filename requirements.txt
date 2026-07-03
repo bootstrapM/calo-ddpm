@@ -1,0 +1,7 @@
+torch>=2.0
+numpy
+scipy
+matplotlib
+tqdm
+# reference iDDPM UNet (pinned to the commit used by LS4GAN/calo-ddpm)
+improved-diffusion @ git+https://github.com/openai/improved-diffusion@783b6740edb79fdb7d063250db2c51cc9545dcd1

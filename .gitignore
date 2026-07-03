@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+workdir/
+*.npy
+*.npz
+*.pth
+*.zip
+progress*.txt
+.DS_Store
