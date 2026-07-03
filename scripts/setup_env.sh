@@ -57,7 +57,17 @@ fi
 echo "[setup] installing requirements (torch, numpy, scipy, matplotlib, tqdm, blobfile)"
 ${PYTHON} -m pip install --upgrade pip
 if [[ -n "${TORCH_INDEX}" ]]; then
-    ${PYTHON} -m pip install "torch>=2.7" ${TORCH_INDEX}
+    # install (or replace) torch from the cu128 index; a plain
+    # 'pip install torch' would keep an already-installed cu13 build
+    TORCH_CUDA="$(${PYTHON} -c 'import torch; print((torch.version.cuda or "0").split(".")[0])' \
+                  2>/dev/null || echo none)"
+    if [[ "${TORCH_CUDA}" != "12" ]]; then
+        echo "[setup] replacing torch (cuda ${TORCH_CUDA}) with cu128 build"
+        ${PYTHON} -m pip uninstall -y torch triton >/dev/null 2>&1 || true
+        ${PYTHON} -m pip install "torch>=2.7" ${TORCH_INDEX}
+    else
+        echo "[setup] torch cu12 build already present"
+    fi
 fi
 ${PYTHON} -m pip install -r requirements.txt
 
