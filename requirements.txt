@@ -1,7 +1,9 @@
-torch>=2.0
+# torch >= 2.7 required for Blackwell GPUs (RTX 50xx, sm_120)
+torch>=2.7
 numpy
 scipy
 matplotlib
 tqdm
-# reference iDDPM UNet (pinned to the commit used by LS4GAN/calo-ddpm)
+# reference iDDPM UNet, pinned to the exact OpenAI commit used by
+# LS4GAN/calo-ddpm (fetched fresh from GitHub at install time)
 improved-diffusion @ git+https://github.com/openai/improved-diffusion@783b6740edb79fdb7d063250db2c51cc9545dcd1

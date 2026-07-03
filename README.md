@@ -4,17 +4,24 @@ Training-free, noise-free inpainting of dead sPHENIX calorimeter regions
 using a pre-trained DDPM (arXiv:2406.01602, weights: Zenodo 12535659) as the
 prior, plus Bayesian posterior validation (SBC / TARP / pulls / coverage).
 
-## Setup
+## Setup (fully self-contained — no pre-existing env, code, or files needed)
 
 ```bash
-conda env create -f environment.yml      # or: pip install -r requirements.txt
-conda activate improved-diffusion
+bash scripts/setup_env.sh                # fresh conda env "calo-ddpm" (or .venv),
+                                         # torch from PyPI, improved-diffusion
+                                         # fetched fresh from OpenAI @ 783b674,
+                                         # runs the consistency tests
+conda activate calo-ddpm                 # (or: source .venv/bin/activate)
 ```
+
+The only external inputs, both downloaded fresh by the pipeline itself:
+improved-diffusion (OpenAI GitHub, pinned commit) and the pre-trained
+weights (Zenodo 12535659, md5-verified by `scripts/download_weights.sh`).
 
 ## Reproduce everything
 
 ```bash
-ROOT=./workdir ./run_all.sh              # all stages
+./run_all.sh                             # all stages, outputs in ./workdir
 ./run_all.sh weights generate            # or selected stages
 ```
 

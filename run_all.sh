@@ -10,15 +10,15 @@
 #   stats     : SBC / TARP / pull / coverage analysis + comparison
 #
 # Usage:
-#   ./run_all.sh                 # everything
+#   ./run_all.sh                 # everything, fully self-contained in ./workdir
 #   ./run_all.sh generate verify # selected stages
-#   ROOT=/home/roli/DiffusionProject N_EVENTS=100000 ./run_all.sh
+#   ROOT=/data/mystudy N_EVENTS=100000 ./run_all.sh
 # ============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
 # ---- configuration (override via environment) ------------------------------
-ROOT="${ROOT:-./workdir}"                       # e.g. /home/roli/DiffusionProject
+ROOT="${ROOT:-./workdir}"                       # all outputs live under here
 WEIGHTS_DIR="${WEIGHTS_DIR:-${ROOT}/pre-trained-model-weights}"
 EVENTS_DIR="${EVENTS_DIR:-${ROOT}/generated_events}"
 VERIFY_DIR="${VERIFY_DIR:-${ROOT}/verification}"
