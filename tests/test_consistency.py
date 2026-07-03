@@ -121,7 +121,9 @@ def test_inpainters():
     y      = x_true * mask
     n_smp  = 1500
 
-    exact_known = {'repaint', 'ddnm', 'ddrm', 'mcg'}   # pigdm: soft consistency
+    # all five now return the known region exactly (pigdm via final-step
+    # post-processing projection; the others by construction)
+    exact_known = {'repaint', 'ddnm', 'ddrm', 'mcg', 'pigdm'}
     # posterior on dead pixels is exactly N(mu0, sigma0^2) (iid prior).
     # DDRM at its default eta = 0.85 is intrinsically UNDER-dispersed here
     # (verified: std/sigma0 -> 1.00, 0.995, 0.96, 0.86, 0.70 for

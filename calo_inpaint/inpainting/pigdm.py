@@ -23,10 +23,11 @@ One step s -> s-1 (Algorithm 1):
 
 The first three terms are exactly a DDIM(eta) step; the paper's default for
 inpainting-type problems, eta = 1, makes them equal in law to the DDPM
-ancestral step.  PiGDM does NOT hard-project the known region; consistency
-is enforced only through the guidance term, so the known region of the
-output is equal to y only approximately (the study evaluates the dead
-region, where this is irrelevant).
+ancestral step.  The published PiGDM does NOT hard-project the known
+region during sampling; consistency is enforced only through the guidance
+term.  For strict noise-free inpainting this implementation projects the
+known region to y at the FINAL step only — post-processing after the last
+network call, with no effect on the sampling dynamics or the dead region.
 """
 
 import torch
@@ -74,5 +75,14 @@ class PiGDMInpainter(BaseInpainter):
         out = sb_prev * x0hat + c2 * eps_hat + sched.sbar[s] * vjp
         if not final and c1_sq.item() > 0:
             out = out + c1_sq.sqrt() * self.randn(x)
+
+        if final:
+            # Noise-free measurement convention: project the known region
+            # to y.  PURE POST-PROCESSING — it happens after the last
+            # network evaluation, so (unlike the per-step projections of
+            # RePaint/MCG) it cannot influence the sampling dynamics, and
+            # the dead region is untouched.  The published PiGDM enforces
+            # consistency only through the guidance term.
+            out = mask * y + (1.0 - mask) * out
 
         return out

@@ -263,10 +263,12 @@ parametrizations [Algorithm~1 of Ref.~\cite{song2023pigdm}]:
 \end{equation}
 with $\eta = 1$ (for which the first three terms are equal in law to the
 ancestral step).  Unlike the other four algorithms, $\Pi$GDM enforces
-consistency only through the guidance term: the known region of the
-output matches $y$ approximately rather than identically.  Since the
-analysis evaluates dead-region pixels only, this difference is
-immaterial for the comparison.
+consistency during sampling only through the guidance term, so the known
+region of its raw output matches $y$ approximately rather than
+identically.  For the noise-free setting we project the known region to
+$y$ at the final step; since this occurs after the last network
+evaluation, it is pure post-processing---it cannot affect the sampling
+dynamics or the dead-region pixels on which the analysis is based.
 
 \subsection{Implementation and validation}
 \label{sec:inpainting:implementation}
@@ -278,7 +280,10 @@ immaterial for the comparison.
   the frozen $\epsilon$-network per reverse step; ``exact~$y$'' indicates
   that the known region of the final sample equals the measurement
   identically.  NFEs are network function evaluations per posterior
-  sample for $S$ reverse steps.}
+  sample for $S$ reverse steps.
+  ($^{\dagger}$: via a final-step projection applied after the last
+  network evaluation; the published algorithm is only approximately
+  consistent.)}
   \label{tab:inpainters}
   \begin{tabular}{lllll}
     \toprule
@@ -288,7 +293,7 @@ immaterial for the comparison.
     DDNM~\cite{wang2022ddnm}          & ---      & no  & yes & $S$ \\
     DDRM~\cite{kawar2022ddrm}         & $\eta = 0.85$, $\eta_b = 1$ & no & yes & $S$ \\
     MCG~\cite{chung2022mcg}           & $\alpha = 1$ & yes & yes & $S$ (+$S$ bwd) \\
-    $\Pi$GDM~\cite{song2023pigdm}     & $\eta = 1$   & yes & approx. & $S$ (+$S$ bwd) \\
+    $\Pi$GDM~\cite{song2023pigdm}     & $\eta = 1$   & yes & yes$^{\dagger}$ & $S$ (+$S$ bwd) \\
     \bottomrule
   \end{tabular}
 \end{table}
