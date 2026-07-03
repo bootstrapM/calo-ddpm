@@ -41,8 +41,24 @@ else
 fi
 
 # ---- 2. python packages ------------------------------------------------------
+# PyPI's default torch wheels track the newest CUDA (13.x); if the local
+# driver only supports CUDA 12.x, install the matching cu128 build instead
+# (still Blackwell/sm_120-capable).
+TORCH_INDEX=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+    DRIVER_CUDA="$(nvidia-smi | grep -o 'CUDA Version: [0-9]*\.[0-9]*' \
+                   | grep -o '[0-9]*\.[0-9]*' || true)"
+    if [[ -n "${DRIVER_CUDA}" && "${DRIVER_CUDA%%.*}" -lt 13 ]]; then
+        echo "[setup] driver supports CUDA ${DRIVER_CUDA} — using cu128 torch wheels"
+        TORCH_INDEX="--index-url https://download.pytorch.org/whl/cu128"
+    fi
+fi
+
 echo "[setup] installing requirements (torch, numpy, scipy, matplotlib, tqdm, blobfile)"
 ${PYTHON} -m pip install --upgrade pip
+if [[ -n "${TORCH_INDEX}" ]]; then
+    ${PYTHON} -m pip install "torch>=2.7" ${TORCH_INDEX}
+fi
 ${PYTHON} -m pip install -r requirements.txt
 
 # remove any broken metadata-only install from an earlier pip git+ attempt
