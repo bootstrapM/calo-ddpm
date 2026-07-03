@@ -168,6 +168,27 @@ def test_inpainters():
     check('ddrm(eta=0.2): near-exact posterior std',
           abs(s / SIGMA0 - 1) < 0.05, f'std={s:.3f}')
 
+    # RePaint NFE count: U evaluations per level for s > 1, exactly ONE at
+    # s = 1 (Alg. 1 does no jump-back at t = 1 and its extra passes are
+    # deterministic recomputations; the old buggy loop re-fed a level-0
+    # object to the net conditioned at t = 1).
+    class CountingNet(torch.nn.Module):
+        def __init__(self, inner):
+            super().__init__()
+            self.inner, self.calls = inner, 0
+
+        def forward(self, x, t, y=None):
+            self.calls += 1
+            return self.inner(x, t)
+
+    cnet = CountingNet(net)
+    U = 3
+    INPAINTERS['repaint'](cnet, sc, DEVICE, seed=7, n_resample=U) \
+        .inpaint(y, mask, 4)
+    expected = U * (sc.S - 1) + 1
+    check('repaint: NFE count U*(S-1)+1', cnet.calls == expected,
+          f'calls={cnet.calls}, expected={expected}')
+
 
 if __name__ == '__main__':
     torch.manual_seed(0)

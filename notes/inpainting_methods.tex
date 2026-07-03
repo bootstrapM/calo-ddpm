@@ -279,7 +279,7 @@ immaterial for the comparison.
     \toprule
     Algorithm & Hyperparameters & Backprop & Exact $y$ & NFEs \\
     \midrule
-    RePaint~\cite{lugmayr2022repaint} & $U = 10$ & no  & yes & $U\!\cdot\!S$ \\
+    RePaint~\cite{lugmayr2022repaint} & $U = 10$ & no  & yes & $U(S{-}1){+}1$ \\
     DDNM~\cite{wang2022ddnm}          & ---      & no  & yes & $S$ \\
     DDRM~\cite{kawar2022ddrm}         & $\eta = 0.85$, $\eta_b = 1$ & no & yes & $S$ \\
     MCG~\cite{chung2022mcg}           & $\alpha = 1$ & yes & yes & $S$ (+$S$ bwd) \\

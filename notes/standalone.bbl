@@ -1,0 +1,60 @@
+\begin{thebibliography}{8}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Ho et~al.(2020)Ho, Jain, and Abbeel]{ho2020ddpm}
+Jonathan Ho, Ajay Jain, and Pieter Abbeel.
+\newblock Denoising diffusion probabilistic models.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  33:\penalty0 6840--6851, 2020.
+
+\bibitem[Lugmayr et~al.(2022)Lugmayr, Danelljan, Romero, Yu, Timofte, and
+  Van~Gool]{lugmayr2022repaint}
+Andreas Lugmayr, Martin Danelljan, Andres Romero, Fisher Yu, Radu Timofte, and
+  Luc Van~Gool.
+\newblock Repaint: Inpainting using denoising diffusion probabilistic models.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+  and Pattern Recognition}, pages 11461--11471, 2022.
+
+\bibitem[Wang et~al.(2023)Wang, Yu, and Zhang]{wang2022ddnm}
+Yinhuai Wang, Jiwen Yu, and Jian Zhang.
+\newblock Zero-shot image restoration using denoising diffusion null-space
+  models.
+\newblock In \emph{International Conference on Learning Representations}, 2023.
+
+\bibitem[Kawar et~al.(2022)Kawar, Elad, Ermon, and Song]{kawar2022ddrm}
+Bahjat Kawar, Michael Elad, Stefano Ermon, and Jiaming Song.
+\newblock Denoising diffusion restoration models.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  35:\penalty0 23593--23606, 2022.
+
+\bibitem[Chung et~al.(2022)Chung, Sim, Ryu, and Ye]{chung2022mcg}
+Hyungjin Chung, Byeongsu Sim, Dohoon Ryu, and Jong~Chul Ye.
+\newblock Improving diffusion models for inverse problems using manifold
+  constraints.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  35:\penalty0 25683--25696, 2022.
+
+\bibitem[Song et~al.(2023)Song, Vahdat, Mardani, and Kautz]{song2023pigdm}
+Jiaming Song, Arash Vahdat, Morteza Mardani, and Jan Kautz.
+\newblock Pseudoinverse-guided diffusion models for inverse problems.
+\newblock In \emph{International Conference on Learning Representations}, 2023.
+
+\bibitem[Song et~al.(2021)Song, Meng, and Ermon]{song2021ddim}
+Jiaming Song, Chenlin Meng, and Stefano Ermon.
+\newblock Denoising diffusion implicit models.
+\newblock In \emph{International Conference on Learning Representations}, 2021.
+
+\bibitem[Torbunov et~al.(2024)Torbunov, Huang, Lin, Ren, Go, Rinn, Yu, Viren,
+  and Huang]{torbunov2024calo}
+Dmitrii Torbunov, Yi~Huang, Meifeng Lin, Yihui Ren, Yeonju Go, Timothy Rinn,
+  Haiwang Yu, Brett Viren, and Jin Huang.
+\newblock Effectiveness of denoising diffusion probabilistic models for fast
+  and high-fidelity whole-event simulation in high-energy heavy-ion
+  experiments.
+\newblock \emph{Physical Review C}, 110\penalty0 (3):\penalty0 034912, 2024.
+
+\end{thebibliography}

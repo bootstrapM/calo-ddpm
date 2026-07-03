@@ -50,10 +50,17 @@ class RePaintInpainter(BaseInpainter):
 
             x_prev = mask * x_known + (1.0 - mask) * x_unknown
 
-            if u < self.n_resample - 1 and s > 1:
-                # time travel: one subsampled step forward, x_{s-1} -> x_s
-                x = sched.forward_step(s, x_prev, noise=self.randn(x))
-            else:
-                x = x_prev
+            if s == 1 or u == self.n_resample - 1:
+                # Done with this time level.  At s = 1 there is no jump-back
+                # (Alg. 1: only when t > 1) and the pass is fully
+                # deterministic (noise gated, x_known = y exactly), so
+                # Alg. 1's remaining passes would recompute the identical
+                # x_0 from the same x_1 -- returning now is exactly
+                # equivalent and avoids re-feeding a level-0 object to the
+                # network conditioned at t = 1.
+                return x_prev
 
-        return x
+            # time travel: one subsampled step forward, x_{s-1} -> x_s
+            x = sched.forward_step(s, x_prev, noise=self.randn(x))
+
+        return x_prev  # unreachable; loop always returns
