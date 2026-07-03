@@ -185,6 +185,22 @@ def test_inpainters():
     except AssertionError:
         check('ddrm: rejects eta > 1', True)
 
+    # base-class input handling: 2D inputs are canonicalized; non-binary
+    # masks are rejected; a train-mode net is switched to eval
+    net.train()
+    inp = INPAINTERS['ddnm'](net, sc, DEVICE, seed=7)
+    check('base: net switched to eval mode', not net.training)
+    out2d = inp.inpaint(y[0], mask[0], 4)          # (H, W) inputs
+    check('base: accepts 2D y/mask', out2d.shape == (4, 1, H, W),
+          f'shape={tuple(out2d.shape)}')
+    kn_dev = ((out2d[:, 0] - x_true) * mask[0]).abs().max().item()
+    check('base: 2D path known region exact', kn_dev < 1e-6)
+    try:
+        inp.inpaint(y, 0.5 * torch.ones_like(mask), 2)
+        check('base: rejects non-binary mask', False)
+    except ValueError:
+        check('base: rejects non-binary mask', True)
+
     # RePaint NFE count: U evaluations per level for s > 1, exactly ONE at
     # s = 1 (Alg. 1 does no jump-back at t = 1 and its extra passes are
     # deterministic recomputations; the old buggy loop re-fed a level-0

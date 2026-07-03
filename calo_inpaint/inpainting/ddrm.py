@@ -70,8 +70,9 @@ class DDRMInpainter(BaseInpainter):
 
     def inpaint(self, y, mask, n_samples):
         # stash mask for init_x (base class calls init_x before the loop)
-        m = mask.to(self.device).float()
-        self._mask_cache = m.unsqueeze(0) if m.dim() == 3 else m
+        self._mask_cache = self._canonical_image(
+            mask.to(self.device).float(), 'mask'
+        )
         try:
             return super().inpaint(y, mask, n_samples)
         finally:

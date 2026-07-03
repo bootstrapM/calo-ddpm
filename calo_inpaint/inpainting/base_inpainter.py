@@ -37,8 +37,11 @@ class BaseInpainter:
         self.prg      = torch.Generator(device)
         self.prg.manual_seed(seed)
 
-        # frozen prior: guarantees the projection-type algorithms never
-        # build autograd graphs; MCG/PiGDM differentiate w.r.t. x only.
+        # frozen prior in eval mode: load_model() already does both, but a
+        # net that bypassed it must not sample with train-mode modules
+        # (dropout/BN) or build autograd graphs in the projection-type
+        # algorithms; MCG/PiGDM differentiate w.r.t. x only.
+        net.eval()
         for p in net.parameters():
             p.requires_grad_(False)
 
@@ -72,16 +75,29 @@ class BaseInpainter:
         x.normal_(generator=self.prg)
         return self.sched.marginal_std() * x
 
+    # -- input handling ------------------------------------------------------
+    @staticmethod
+    def _canonical_image(z, name='tensor'):
+        """(H,W) / (C,H,W) / (B,C,H,W)  ->  (B,C,H,W)."""
+        if z.dim() == 2:
+            return z.unsqueeze(0).unsqueeze(0)
+        if z.dim() == 3:
+            return z.unsqueeze(0)
+        if z.dim() == 4:
+            return z
+        raise ValueError(
+            f'{name}: expected a 2D, 3D or 4D tensor, got shape '
+            f'{tuple(z.shape)}'
+        )
+
     # -- main loop ---------------------------------------------------------
     def inpaint(self, y, mask, n_samples):
         """Draw n_samples posterior samples.  y, mask: (1, H, W) on device."""
-        y    = y.to(self.device).float()
-        mask = mask.to(self.device).float()
+        y    = self._canonical_image(y.to(self.device).float(), 'y')
+        mask = self._canonical_image(mask.to(self.device).float(), 'mask')
 
-        if y.dim() == 3:
-            y = y.unsqueeze(0)          # (1, 1, H, W), broadcasts over batch
-        if mask.dim() == 3:
-            mask = mask.unsqueeze(0)
+        if not torch.all((mask == 0) | (mask == 1)):
+            raise ValueError('mask must be binary: 1 = known/live, 0 = dead')
 
         x = self.init_x(y, n_samples)
 
