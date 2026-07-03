@@ -92,6 +92,13 @@ def main():
             start = int(f.read().split('/')[0])
         print(f'[resume] {start} / {n} events already generated')
 
+    n_batches = (n + args.batch - 1) // args.batch
+    print(f'[{args.tag}] starting: {n} events, batch {args.batch} '
+          f'({n_batches} batches), S={args.steps}, dp={args.dp}, '
+          f'bf16={args.bf16}, device={args.device}\n'
+          f'[{args.tag}] note: progress prints once per completed batch '
+          f'(each batch = full {args.steps}-step chain)', flush=True)
+
     # per-batch reseeding (seed*1000003 + batch offset) makes batches
     # independent and resume exact: restart from the last full batch.
     i = start - (start % args.batch)
