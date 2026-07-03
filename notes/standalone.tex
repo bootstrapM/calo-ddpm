@@ -1,0 +1,24 @@
+% Standalone wrapper for previewing inpainting_methods.tex
+% (in the paper, just \input{inpainting_methods} instead)
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage[numbers, sort&compress]{natbib}
+\usepackage{hyperref}
+
+% placeholder so the \label{sec:results} reference in the note resolves
+\newcommand{\resultsplaceholder}{}
+
+\begin{document}
+
+\input{inpainting_methods}
+
+% dummy results section so \ref{sec:results} resolves in the preview
+\section{Results}\label{sec:results}
+(Placeholder --- in the paper this is the calibration-study section.)
+
+\bibliographystyle{unsrtnat}
+\bibliography{inpainting_methods}
+
+\end{document}

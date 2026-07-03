@@ -1,0 +1,320 @@
+% ---------------------------------------------------------------------------
+% Training-free inpainting with a diffusion prior: implementation note
+% Designed to be \input{} into the paper; requires amsmath, booktabs.
+% Bibliography keys are provided in inpainting_methods.bib.
+% ---------------------------------------------------------------------------
+
+\section{Training-free inpainting with a diffusion prior}
+\label{sec:inpainting}
+
+\subsection{Diffusion prior and notation}
+\label{sec:inpainting:notation}
+
+All inpainting algorithms considered in this work operate on a single
+pre-trained denoising diffusion probabilistic model
+(DDPM)~\cite{ho2020ddpm} per centrality class, used \emph{as is}: no
+component is retrained or fine-tuned for the inpainting task.  The model
+acts in the normalized (logarithmic) representation of the calorimeter
+image, $x = \ln\!\bigl(\max(E_T, E_{\min})\bigr)$ with
+$E_{\min} = 10^{-3}$~GeV, on images $x \in \mathbb{R}^{1\times 24\times 64}$
+in the $(\eta,\phi)$ plane.
+
+The forward process is the standard variance-preserving Markov chain with
+$T$ steps,
+\begin{equation}
+  q(x_t \mid x_{t-1}) = \mathcal{N}\!\bigl(x_t;\,
+      \sqrt{1-\beta_t}\, x_{t-1},\; \beta_t \mathbf{I}\bigr),
+  \qquad
+  q(x_t \mid x_0) = \mathcal{N}\!\bigl(x_t;\,
+      \sqrt{\bar\alpha_t}\, x_0,\; (1-\bar\alpha_t)\,\mathbf{I}\bigr),
+  \label{eq:forward}
+\end{equation}
+with $\alpha_t = 1-\beta_t$ and $\bar\alpha_t = \prod_{i\le t}\alpha_i$.
+The schedule replicates the training configuration exactly: $T = 8000$ and
+a linear schedule $\beta_t$ interpolating from $\beta_1 = b/T$ to
+$\beta_T = 1000\,b/T$, with $b = 0.02$ ($0.10$) for the 0--10\%
+(40--50\%) centrality model.  The network is an
+$\epsilon$-prediction U-Net, $\hat\epsilon = \epsilon_\theta(x_t, t)$, from
+which the denoised estimate follows by Tweedie's formula,
+\begin{equation}
+  \hat{x}_0(x_t)
+  = \frac{x_t - \sqrt{1-\bar\alpha_t}\;\epsilon_\theta(x_t, t)}
+         {\sqrt{\bar\alpha_t}} .
+  \label{eq:tweedie}
+\end{equation}
+
+For sampling efficiency the reverse process is run on a subsampled time
+grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$ obtained by rounding a
+linear spacing of $S$ points ($S = 1000$ unless stated otherwise); the
+network is always conditioned on the \emph{original} time indices
+$\tau_k$.  Writing $t = \tau_k$ and $s = \tau_{k-1}$ for one reverse step,
+the effective per-step noise level is
+$\beta_{(k)} \equiv 1 - \bar\alpha_t/\bar\alpha_s$, and the DDPM posterior
+used by the ancestral sampler is
+\begin{equation}
+  q(x_s \mid x_t, x_0)
+  = \mathcal{N}\!\left(x_s;\;
+      \frac{\sqrt{\bar\alpha_s}\,\beta_{(k)}}{1-\bar\alpha_t}\, x_0
+      + \frac{\sqrt{\bar\alpha_t/\bar\alpha_s}\,(1-\bar\alpha_s)}
+             {1-\bar\alpha_t}\, x_t,\;
+      \tilde\beta_{(k)} \mathbf{I}\right),
+  \qquad
+  \tilde\beta_{(k)} = \frac{(1-\bar\alpha_s)\,\beta_{(k)}}{1-\bar\alpha_t}.
+  \label{eq:posterior}
+\end{equation}
+Because $\bar\alpha_{\tau_0} = \bar\alpha_0 = 1$, the final reverse step
+collapses, $q(x_0 \mid x_{\tau_1}, \hat x_0) = \delta(x_0 - \hat x_0)$;
+this property is used below to guarantee exact data consistency of the
+final sample.  Unconditional generation initializes
+$x_T \sim \mathcal{N}(0, (1-\bar\alpha_T)\mathbf{I})$ and iterates
+Eqs.~(\ref{eq:tweedie})--(\ref{eq:posterior}) with $x_0 \to \hat x_0$.
+
+\subsection{Noise-free inpainting setting}
+\label{sec:inpainting:setting}
+
+A dead detector region is described by a binary mask
+$m \in \{0,1\}^{24\times 64}$, with $m_i = 1$ on live (observed) towers
+and $m_i = 0$ on dead towers.  The measurement is noise-free,
+\begin{equation}
+  y = m \odot x_0^{\mathrm{true}},
+  \qquad \sigma_y = 0,
+  \label{eq:measurement}
+\end{equation}
+i.e.\ the degradation operator is $A = \operatorname{diag}(m)$ and the
+inference target is the posterior
+$p\bigl(x_0 \mid m \odot x_0 = y\bigr)$ under the DDPM prior.  Two
+simplifications specific to this setting are used throughout.  First,
+$A$ is its own Moore--Penrose pseudoinverse on its range,
+$A^\dagger = A^{\!\top} = A$, so no singular-value machinery is required:
+spectral space coincides with pixel space, with unit singular values on
+observed and zero on dead pixels.  Second, all branches of the algorithms
+associated with measurement noise ($\sigma_y > 0$) drop out identically.
+In this noiseless-masking limit the five algorithms below---although
+derived from different principles (heuristic projection, null-space
+decomposition, spectral variational inference, and two flavors of
+guidance by the measurement-consistency gradient)---approximate the
+\emph{same} posterior, which makes their head-to-head calibration
+comparison meaningful.
+
+Posterior sampling is performed by batching $n$ independent reverse
+trajectories per image ($n = 50$ in the main study); each algorithm
+consumes one measurement pair $(y, m)$ and returns $n$ samples of the
+full image, of which only the dead region is retained for analysis.
+
+\subsection{Algorithms}
+\label{sec:inpainting:algorithms}
+
+Throughout this section one reverse step from $t = \tau_k$ to
+$s = \tau_{k-1}$ is described; $\xi, \xi', \dots \sim \mathcal{N}(0,
+\mathbf{I})$ denote independent standard normal draws, and
+$\hat x_0 \equiv \hat x_0(x_t)$, $\hat\epsilon \equiv
+\epsilon_\theta(x_t, \tau_k)$ from Eq.~(\ref{eq:tweedie}).
+
+\subsubsection{RePaint}
+\label{sec:inpainting:repaint}
+
+RePaint~\cite{lugmayr2022repaint} alternates an unconditional reverse
+step on the dead region with an independent forward-diffusion of the
+known content to the \emph{matching} noise level:
+\begin{align}
+  x_s^{\mathrm{known}} &\sim
+      q(x_s \mid x_0 = y)
+      = \mathcal{N}\!\bigl(\sqrt{\bar\alpha_s}\, y,\;
+                           (1-\bar\alpha_s)\,\mathbf{I}\bigr),
+  \label{eq:repaint-known}\\
+  x_s^{\mathrm{dead}} &\sim
+      q(x_s \mid x_t, \hat x_0)
+      \quad\text{[Eq.~(\ref{eq:posterior})]},
+  \label{eq:repaint-unknown}\\
+  x_s &= m \odot x_s^{\mathrm{known}}
+        + (1-m) \odot x_s^{\mathrm{dead}} .
+  \label{eq:repaint-combine}
+\end{align}
+We emphasize the time index in Eq.~(\ref{eq:repaint-known}): both branches
+must live at level $s = \tau_{k-1}$ \emph{after} the step.  Noising the
+known region to level $\tau_k$ instead---a plausible-looking off-by-one---
+leaves it systematically one step too noisy at every iteration and biases
+the reconstruction at the dead-region boundary; we verified that this
+variant degrades calibration and use the correct $\tau_{k-1}$ convention.
+
+To harmonize the two branches, RePaint applies \emph{resampling}: steps
+(\ref{eq:repaint-known})--(\ref{eq:repaint-combine}) are repeated $U$
+times ($U = 10$ by default), jumping back one step between repetitions
+with the forward kernel
+$x_t \sim q(x_t \mid x_s) = \mathcal{N}(\sqrt{\bar\alpha_t/\bar\alpha_s}\,
+x_s,\, \beta_{(k)}\mathbf{I})$.\footnote{Algorithm~1 of
+Ref.~\cite{lugmayr2022repaint} writes the jump-back kernel with
+$\beta_{t-1}$; the kernel consistent with the forward process
+(\ref{eq:forward}) uses the transition variance of the step being
+re-traversed, which is what we implement.}
+At the final step $\bar\alpha_{\tau_0} = 1$, so
+Eq.~(\ref{eq:repaint-known}) returns $y$ exactly: the known region of the
+output equals the measurement identically.
+
+\subsubsection{DDNM}
+\label{sec:inpainting:ddnm}
+
+The Denoising Diffusion Null-space Model~\cite{wang2022ddnm} rectifies
+the range-space component of the denoised estimate at every step.  Any
+solution consistent with $y = A x_0$ can be written
+$x_0 = A^\dagger y + (\mathbf{I} - A^\dagger A)\, \bar x$; for noiseless
+masking the projection of $\hat x_0$ onto this affine subspace is simply
+\begin{equation}
+  \hat x_0^{\,\mathrm{proj}} = m \odot y + (1-m) \odot \hat x_0 ,
+  \label{eq:ddnm-proj}
+\end{equation}
+after which the standard ancestral step, Eq.~(\ref{eq:posterior}) with
+$x_0 \to \hat x_0^{\,\mathrm{proj}}$, is taken.  No noisy-case
+corrections (the $\Sigma$-scaling of DDNM$^{+}$) are needed for
+$\sigma_y = 0$.  By the collapse property of the final step, the output
+equals $\hat x_0^{\,\mathrm{proj}}$ at $k=1$, so data consistency of the
+known region is again exact.
+
+\subsubsection{DDRM}
+\label{sec:inpainting:ddrm}
+
+Denoising Diffusion Restoration Models~\cite{kawar2022ddrm} define a
+variational posterior in the spectral domain of $A$.  For masking the
+spectral basis is the pixel basis, and with $\sigma_y = 0$ the general
+update [Eqs.~(7)--(8) of Ref.~\cite{kawar2022ddrm}] reduces, in the
+variance-preserving variables used here, to
+\begin{align}
+  \text{dead pixels:}\quad
+  x_s &= \sqrt{\bar\alpha_s}\,\hat x_0
+        + \sqrt{(1-\eta^2)(1-\bar\alpha_s)}\;\hat\epsilon
+        + \eta \sqrt{1-\bar\alpha_s}\;\xi ,
+  \label{eq:ddrm-dead}\\
+  \text{observed pixels:}\quad
+  x_s &= \sqrt{\bar\alpha_s}\,\bigl[(1-\eta_b)\,\hat x_0
+        + \eta_b\, y\bigr]
+        + \sqrt{1-\bar\alpha_s}\;\xi' ,
+  \label{eq:ddrm-obs}
+\end{align}
+with hyperparameters $\eta = 0.85$ and $\eta_b = 1$ at their published
+defaults.  Initialization follows the same pattern at $t = T$:
+observed pixels start from
+$\mathcal{N}(\sqrt{\bar\alpha_T}\, y, (1-\bar\alpha_T)\mathbf{I})$ and
+dead pixels from $\mathcal{N}(0, (1-\bar\alpha_T)\mathbf{I})$.
+Note that Eq.~(\ref{eq:ddrm-dead}) is DDIM-like but references the
+\emph{marginal} noise scale $\sqrt{1-\bar\alpha_s}$ rather than the
+ancestral posterior width $\smash{\tilde\beta_{(k)}^{1/2}}$---a
+DDRM-specific choice.  With $\eta_b = 1$ the observed pixels are
+independently re-noised copies of $y$ at every level, and at the final
+step ($\bar\alpha_0 = 1$, vanishing noise) the output known region equals
+$y$ exactly while dead pixels return $\hat x_0$.
+
+\subsubsection{MCG}
+\label{sec:inpainting:mcg}
+
+Manifold-constrained gradients~\cite{chung2022mcg} augment the
+RePaint-style projection with a measurement-consistency gradient taken
+\emph{through the denoiser network}.  With
+$\mathcal{R}(x_t) = \bigl\lVert m \odot \bigl(y - \hat x_0(x_t)\bigr)
+\bigr\rVert_2$ (the $\ell_2$ norm, not its square, following the official
+implementation---this makes the correction self-normalizing), one step
+reads
+\begin{align}
+  g &= \nabla_{x_t}\, \mathcal{R}(x_t),\\
+  x_s^{\mathrm{dead}} &= x_s' - \alpha\, g,
+  \qquad x_s' \sim q(x_s \mid x_t, \hat x_0),\\
+  x_s &= m \odot x_s^{\mathrm{known}} + (1-m) \odot x_s^{\mathrm{dead}},
+\end{align}
+with $x_s^{\mathrm{known}}$ as in Eq.~(\ref{eq:repaint-known}) (same
+$\tau_{k-1}$ convention) and step size $\alpha = 1$.  The gradient
+requires one backward pass through $\epsilon_\theta$ per step; the prior
+network weights remain frozen, and differentiation is with respect to
+$x_t$ only.  Exact data consistency of the known region follows from the
+projection as for RePaint.
+
+\subsubsection{$\Pi$GDM}
+\label{sec:inpainting:pigdm}
+
+Pseudoinverse-guided diffusion models~\cite{song2023pigdm} approximate
+the intractable guidance term $\nabla_{x_t} \log p_t(y \mid x_t)$ using a
+Gaussian surrogate for $p(x_0 \mid x_t)$.  For a noiseless measurement the
+guidance reduces to a vector--Jacobian product with the mask-projected
+residual [Eq.~(8) of Ref.~\cite{song2023pigdm}; the $r_t^2$ prefactor
+cancels exactly in the update for $\sigma_y = 0$],
+\begin{equation}
+  g = \left(\frac{\partial \hat x_0(x_t)}{\partial x_t}\right)^{\!\!\top}
+      \bigl[\, m \odot (y - \hat x_0)\,\bigr],
+  \label{eq:pigdm-vjp}
+\end{equation}
+evaluated with one backward pass through the network (the residual is
+treated as a constant cotangent).  The update is a DDIM($\eta$)
+step~\cite{song2021ddim} plus the guidance scaled by
+$\sqrt{\bar\alpha_t}$, as required for variance-preserving
+parametrizations [Algorithm~1 of Ref.~\cite{song2023pigdm}]:
+\begin{equation}
+  x_s = \sqrt{\bar\alpha_s}\, \hat x_0
+        + c_2\, \hat\epsilon
+        + c_1\, \xi
+        + \sqrt{\bar\alpha_t}\; g,
+  \qquad
+  c_1 = \eta\,\tilde\beta_{(k)}^{1/2},
+  \quad
+  c_2 = \sqrt{1 - \bar\alpha_s - c_1^2},
+  \label{eq:pigdm-update}
+\end{equation}
+with $\eta = 1$ (for which the first three terms are equal in law to the
+ancestral step).  Unlike the other four algorithms, $\Pi$GDM enforces
+consistency only through the guidance term: the known region of the
+output matches $y$ approximately rather than identically.  Since the
+analysis evaluates dead-region pixels only, this difference is
+immaterial for the comparison.
+
+\subsection{Implementation and validation}
+\label{sec:inpainting:implementation}
+
+\begin{table}[t]
+  \centering
+  \caption{Summary of the implemented inpainting algorithms, specialized
+  to noise-free masking.  ``Backprop'' indicates a backward pass through
+  the frozen $\epsilon$-network per reverse step; ``exact~$y$'' indicates
+  that the known region of the final sample equals the measurement
+  identically.  NFEs are network function evaluations per posterior
+  sample for $S$ reverse steps.}
+  \label{tab:inpainters}
+  \begin{tabular}{lllll}
+    \toprule
+    Algorithm & Hyperparameters & Backprop & Exact $y$ & NFEs \\
+    \midrule
+    RePaint~\cite{lugmayr2022repaint} & $U = 10$ & no  & yes & $U\!\cdot\!S$ \\
+    DDNM~\cite{wang2022ddnm}          & ---      & no  & yes & $S$ \\
+    DDRM~\cite{kawar2022ddrm}         & $\eta = 0.85$, $\eta_b = 1$ & no & yes & $S$ \\
+    MCG~\cite{chung2022mcg}           & $\alpha = 1$ & yes & yes & $S$ (+$S$ bwd) \\
+    $\Pi$GDM~\cite{song2023pigdm}     & $\eta = 1$   & yes & approx. & $S$ (+$S$ bwd) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+All five algorithms share the sampler infrastructure: the exact training
+schedule reconstructed from the model configuration, the subsampled time
+grid of Sec.~\ref{sec:inpainting:notation}, evaluation of
+$\epsilon_\theta$ under \texttt{bfloat16} autocast with all schedule and
+update arithmetic in \texttt{float32}, and a dedicated
+counter-based random stream per truth image (making every study run
+bitwise reproducible and restartable).  Truth images are drawn from the
+same DDPM used as the prior, so the ground truth is, by construction, a
+sample from the prior---the setting in which posterior-calibration
+diagnostics cleanly isolate algorithmic approximation error.
+Table~\ref{tab:inpainters} summarizes the algorithm-specific choices.
+
+The implementation is validated in two independent ways.  First, the
+schedule, subsampling, and posterior coefficients are verified
+numerically against the training code of Ref.~\cite{torbunov2024calo}
+to single precision.  Second, each algorithm is run on an analytically
+tractable problem: for an i.i.d.\ Gaussian prior
+$x_0 \sim \mathcal{N}(\mu_0, \sigma_0^2 \mathbf{I})$ the optimal
+$\epsilon$-predictor is known in closed form and the true posterior on
+dead pixels is again $\mathcal{N}(\mu_0, \sigma_0^2)$, independent of the
+observed pixels.  RePaint, DDNM, MCG, and $\Pi$GDM reproduce this
+posterior to within sampling accuracy, and the algorithms with hard
+projection preserve the known region exactly (to floating-point
+precision).  DDRM at its default $\eta = 0.85$ reproduces the posterior
+mean but \emph{under-disperses} the posterior (standard-deviation ratio
+$\approx 0.86$ in this test, approaching $1$ as $\eta \to 0$ and
+$\approx 0.70$ at $\eta = 1$, independent of $S$)---an intrinsic property
+of its variational posterior in the noise-free limit rather than an
+implementation artifact, and one that the calibration study of
+Sec.~\ref{sec:results} is designed to expose.
