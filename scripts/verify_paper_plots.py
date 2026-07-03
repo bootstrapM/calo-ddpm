@@ -52,6 +52,9 @@ def parse_cmdargs():
                    help='enables the <Sum E_T> soft check')
     p.add_argument('--n-max', type=int, default=None,
                    help='cap events per file')
+    p.add_argument('--fig5-logx', action='store_true',
+                   help='log-spaced Sum E_T bins / log x-axis in Fig. 5 '
+                        '(paper ticks look linear; flag provided in case)')
     return p.parse_args()
 
 
@@ -91,12 +94,15 @@ def main():
         if k == 'sum':
             vals_all = [sum_et(ev) for ev in data]
             lo, hi = (np.percentile(np.concatenate(vals_all), [0.02, 99.98]))
-            bins = np.linspace(lo * 0.9, hi * 1.1, 61)
+            bins = np.linspace(lo * 0.9, hi * 1.1, 61)   # linear (paper Fig. 4)
             xlabel = r'$\Sigma E_T^{tower}$ [GeV]'
         else:
+            # tower-area spectra span the 1e-3 GeV floor to ~20 GeV:
+            # log-spaced bins on a log x-axis, as in paper Fig. 4
             vals_all = [window_sums(ev, k).ravel() for ev in data]
-            hi   = max(v.max() for v in vals_all)
-            bins = np.linspace(0.0, hi * 1.05, 81)
+            lo   = max(1e-3, min(v.min() for v in vals_all) * 0.9)
+            hi   = max(v.max() for v in vals_all) * 1.1
+            bins = np.geomspace(lo, hi, 81)
             xlabel = rf'${k}\times{k}$ $E_T$ [GeV]'
 
         ref_dens = None
@@ -118,6 +124,9 @@ def main():
                     )
 
         axes[0, c].set_yscale('log')
+        if k != 'sum':
+            axes[0, c].set_xscale('log')
+            axes[1, c].set_xscale('log')
         axes[0, c].set_ylabel(r'$(1/N)\,dN/dE_T$')
         axes[1, c].axhline(1.0, color='k', lw=0.5)
         axes[1, c].set_ylim(0.5, 1.5)
@@ -132,7 +141,10 @@ def main():
     # ---- Fig. 5 style: <sigma_ET> vs Sum E_T ------------------------------
     tot_all = np.concatenate([sum_et(ev) for ev in data])
     lo, hi  = np.percentile(tot_all, [1, 99])
-    pbins   = np.linspace(lo, hi, 13)
+    if args.fig5_logx:
+        pbins = np.geomspace(max(lo, 1e-3), hi, 13)
+    else:
+        pbins = np.linspace(lo, hi, 13)
 
     fig, axes = plt.subplots(1, len(areas), figsize=(4 * len(areas), 3.6),
                              constrained_layout=True)
@@ -140,6 +152,8 @@ def main():
         for ev, lab in zip(data, labels):
             x, m, e, _ = sigma_et_profile(ev, k, pbins)
             axes[c].errorbar(x, m, yerr=e, fmt='o-', ms=3, lw=1, label=lab)
+        if args.fig5_logx:
+            axes[c].set_xscale('log')
         axes[c].set_xlabel(r'$\Sigma E_T^{tower}$ [GeV]')
         axes[c].set_ylabel(rf'$\langle\sigma_{{E_T}}\rangle$ ${k}\times{k}$ [GeV]')
     axes[0].legend(fontsize=8)
