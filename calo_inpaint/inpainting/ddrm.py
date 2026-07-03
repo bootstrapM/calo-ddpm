@@ -29,6 +29,12 @@ sigma_t = sqrt(vbar_t) / sbar_t) reduces to:
   are simply re-noised copies of y at each level, and at s-1 = 0
   (sigma_0 = 0, sbar_0 = 1) the output is exact: known region = y, dead
   region = x0hat.
+
+  Note: for eta_b < 1 the published update ends with the known region at
+  (1-eta_b) x0hat + eta_b y, i.e. NOT exactly consistent even though the
+  measurement is noise-free.  This implementation therefore projects the
+  known region to y at the final step (a no-op at eta_b = 1); the dead
+  region is never affected.
 """
 
 import torch
@@ -45,6 +51,8 @@ class DDRMInpainter(BaseInpainter):
     def __init__(self, net, sched, device, seed=0, use_bf16=False,
                  eta=0.85, eta_b=1.0):
         super().__init__(net, sched, device, seed=seed, use_bf16=use_bf16)
+        assert 0.0 <= eta <= 1.0,   f'eta={eta} outside [0, 1]'
+        assert 0.0 <= eta_b <= 1.0, f'eta_b={eta_b} outside [0, 1]'
         self.eta   = float(eta)
         self.eta_b = float(eta_b)
 
@@ -76,7 +84,7 @@ class DDRMInpainter(BaseInpainter):
         sb_prev = sched.sbar[s - 1]
         vb_prev = sched.vbar[s - 1]
 
-        final = sched.t_map[s].item() <= 1   # s-1 == 0: no noise, exact
+        final = (s == 1)                 # last reverse step: s-1 == 0
 
         # dead pixels: DDIM-like update with eta
         x_dead = sb_prev * x0hat
@@ -91,5 +99,14 @@ class DDRMInpainter(BaseInpainter):
         x_obs = sb_prev * ((1.0 - self.eta_b) * x0hat + self.eta_b * y)
         if not final:
             x_obs = x_obs + vb_prev.sqrt() * self.randn(x)
+
+        if final:
+            # Noise-free measurement: project the known region to y exactly.
+            # A no-op at the default eta_b = 1 (DDRM is already exact
+            # there); for eta_b < 1 the PUBLISHED update would end at
+            # (1-eta_b) x0hat + eta_b y -- this projection is our
+            # implementation choice on top of DDRM, and never touches the
+            # dead region.
+            x_obs = y
 
         return mask * x_obs + (1.0 - mask) * x_dead

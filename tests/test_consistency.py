@@ -168,6 +168,21 @@ def test_inpainters():
     check('ddrm(eta=0.2): near-exact posterior std',
           abs(s / SIGMA0 - 1) < 0.05, f'std={s:.3f}')
 
+    # DDRM with eta_b < 1: the final projection must still return the
+    # known region exactly (noise-free measurement convention):
+    out = INPAINTERS['ddrm'](net, sc, DEVICE, seed=7, eta_b=0.5) \
+        .inpaint(y, mask, 64)
+    kn_dev = ((out[:, 0] - x_true) * mask[0]).abs().max().item()
+    check('ddrm(eta_b=0.5): known region exact via final projection',
+          kn_dev < 1e-6, f'max|dev|={kn_dev:.2e}')
+
+    # hyperparameter guards
+    try:
+        INPAINTERS['ddrm'](net, sc, DEVICE, eta=1.5)
+        check('ddrm: rejects eta > 1', False)
+    except AssertionError:
+        check('ddrm: rejects eta > 1', True)
+
     # RePaint NFE count: U evaluations per level for s > 1, exactly ONE at
     # s = 1 (Alg. 1 does no jump-back at t = 1 and its extra passes are
     # deterministic recomputations; the old buggy loop re-fed a level-0

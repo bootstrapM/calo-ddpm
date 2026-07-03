@@ -43,6 +43,7 @@ class PiGDMInpainter(BaseInpainter):
     def __init__(self, net, sched, device, seed=0, use_bf16=False,
                  eta=1.0):
         super().__init__(net, sched, device, seed=seed, use_bf16=use_bf16)
+        assert 0.0 <= eta <= 1.0, f'eta={eta} outside [0, 1]'
         self.eta = float(eta)
 
     def step(self, s, x, y, mask):
@@ -63,7 +64,7 @@ class PiGDMInpainter(BaseInpainter):
         sb_prev = sched.sbar[s - 1]
         vb_prev = sched.vbar[s - 1]
 
-        final = sched.t_map[s].item() <= 1
+        final = (s == 1)                 # last reverse step: s-1 == 0
 
         c1_sq = (self.eta ** 2) * sched.post_var[s]
         if final:

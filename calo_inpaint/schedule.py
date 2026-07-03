@@ -113,12 +113,12 @@ class Schedule:
     def ancestral_step(self, s, x, x0hat, generator=None, noise=None):
         """Sample the DDPM posterior q(x_{s-1} | x_s, x0hat).
 
-        Noise is suppressed on the final step (original time t_map[s] <= 1,
-        matching jetgen's `map_time(t) > 1` gate), where the posterior
-        collapses and the step returns x0hat exactly.
+        Noise is suppressed on the final step s == 1 (where post_var = 0 by
+        the vbar_0 = 0 padding and the posterior collapses to x0hat exactly;
+        equivalent to jetgen's `map_time(t) > 1` gate since t_map[1] = 1).
         """
         mean = self.coef_x0[s] * x0hat + self.coef_xt[s] * x
-        if self.t_map[s].item() <= 1:
+        if s <= 1:
             return mean
         if noise is None:
             noise = _randn(x, generator)
@@ -139,7 +139,7 @@ class Schedule:
         vb_prev = self.vbar[s - 1]
 
         sigma2 = (eta ** 2) * self.post_var[s]
-        if self.t_map[s].item() <= 1:
+        if s <= 1:                       # final step: deterministic, exact
             sigma2 = torch.zeros_like(sigma2)
 
         dir_coef = torch.clamp(vb_prev - sigma2, min=0.0).sqrt()
