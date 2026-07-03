@@ -35,7 +35,10 @@ from calo_inpaint.metrics import (
     window_sums, sum_et, sigma_et_profile, TOWER_AREAS
 )
 
-EXPECTED_MEAN_SUM_ET = { 'cent0': None, 'cent4': 224.5 }   # GeV, soft checks
+# GeV, soft +-5% regression anchors from validated runs:
+# cent4 from the original study; cent0 measured 2026-07-03 (10k events,
+# seed0, T=S=8000, bf16) on the from-scratch pipeline.
+EXPECTED_MEAN_SUM_ET = { 'cent0': 1316.5, 'cent4': 224.5 }
 
 
 def parse_cmdargs():
