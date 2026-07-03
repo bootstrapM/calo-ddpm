@@ -4,6 +4,8 @@ numpy
 scipy
 matplotlib
 tqdm
-# reference iDDPM UNet, pinned to the exact OpenAI commit used by
-# LS4GAN/calo-ddpm (fetched fresh from GitHub at install time)
-improved-diffusion @ git+https://github.com/openai/improved-diffusion@783b6740edb79fdb7d063250db2c51cc9545dcd1
+blobfile>=1.0.5   # improved-diffusion runtime dependency
+# NOTE: improved-diffusion itself is NOT pip-installable from git (its
+# setup.py at the pinned commit builds an empty wheel under modern pip).
+# scripts/setup_env.sh clones it fresh from OpenAI at commit 783b6740edb...
+# into external/improved-diffusion and registers it via a .pth file.

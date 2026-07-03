@@ -9,8 +9,11 @@ prior, plus Bayesian posterior validation (SBC / TARP / pulls / coverage).
 ```bash
 bash scripts/setup_env.sh                # fresh conda env "calo-ddpm" (or .venv),
                                          # torch from PyPI, improved-diffusion
-                                         # fetched fresh from OpenAI @ 783b674,
-                                         # runs the consistency tests
+                                         # cloned fresh from OpenAI @ 783b674
+                                         # into external/ (its setup.py is broken
+                                         # for pip git-installs, so it is
+                                         # registered via a .pth file instead),
+                                         # then runs the consistency tests
 conda activate calo-ddpm                 # (or: source .venv/bin/activate)
 ```
 
