@@ -36,9 +36,14 @@ calo_inpaint/inpainting/ base_inpainter, repaint, ddnm, ddrm, mcg, pigdm
 scripts/                 generate_events, verify_paper_plots,
                          run_inpaint_study, run_statistical_analysis,
                          download_weights.sh
+notebooks/               experimentation.ipynb — step-by-step interactive pipeline
 tests/                   consistency checks (tiny CPU model, no weights needed)
 run_all.sh               master pipeline
 ```
+
+For interactive exploration: `jupyter lab notebooks/experimentation.ipynb`
+(knobs like `ROOT`, `CENT`, `S_FAST`, `N_POST` are env-overridable; defaults
+target quick GPU turnaround, use `S_FAST=8000` for paper-quality generation).
 
 Conventions: images are (1, 24, 64) tower E_T maps in GeV; model space is
 `ln(clip(E, 1e-3))`; schedules replicate jetgen's padded linear-beta
