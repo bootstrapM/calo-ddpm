@@ -328,3 +328,143 @@ $\approx 0.70$ at $\eta = 1$, independent of $S$)---an intrinsic property
 of its variational posterior in the noise-free limit rather than an
 implementation artifact, and one that the calibration study of
 Sec.~\ref{sec:results} is designed to expose.
+
+\section{Statistical validation methodology}
+\label{sec:validation}
+
+\subsection{Evaluation frame}
+\label{sec:validation:frame}
+
+Truth images are drawn from the same DDPM that serves as the inpainting
+prior.  The ground truth is therefore, by construction, a sample from the
+prior, and for a noiseless measurement the pair
+$(x_0^{\mathrm{true}},\, y = m \odot x_0^{\mathrm{true}})$ realizes
+exactly the self-consistency setting of simulation-based
+calibration~\cite{talts2018sbc}: if an algorithm sampled the posterior
+$p(x_0 \mid y)$ exactly, truth and posterior samples would be
+exchangeable, and any measurable departure from the calibration
+diagnostics below is attributable purely to algorithmic approximation
+error (there is no model misspecification by construction).
+
+For each truth image $i = 1, \dots, N$ the algorithm under test draws
+$J$ i.i.d.\ posterior samples $\{x^{(i,j)}\}_{j=1}^{J}$ ($J = 50$,
+$N = 1000$ in the main study); all diagnostics are evaluated on the
+dead-region pixels only.  Perceptual or point-estimate image metrics
+(FID, LPIPS, PSNR, SSIM, Pearson correlation of the posterior mean) are
+deliberately not used: the scientific target is the posterior
+\emph{distribution} over physical quantities, not the fidelity of a
+single reconstruction.  In particular, the posterior mean is an
+intentionally variance-suppressed point estimate; regressing it against
+truth necessarily yields a slope below unity.  This shrinkage slope is
+reported as a diagnostic of the posterior width but is not scored.
+
+\subsection{Per-pixel rank statistics (SBC)}
+\label{sec:validation:sbc}
+
+For every image $i$ and dead pixel $p$, the rank of truth among the
+posterior samples is
+\begin{equation}
+  r_{ip} \;=\; \#\bigl\{\, j : x^{(i,j)}_p < x^{\mathrm{true}}_{ip} \bigr\}
+  \;+\; u_{ip},
+  \qquad
+  u_{ip} \sim \mathcal{U}\bigl\{0, \dots,
+      \#\{ j : x^{(i,j)}_p = x^{\mathrm{true}}_{ip}\}\bigr\},
+  \label{eq:sbc-rank}
+\end{equation}
+where the randomized tie-breaking term $u_{ip}$ handles exact ties
+(which occur at the $E_{\min}$ clipping floor).  Under exact calibration
+$r_{ip}$ is uniform on $\{0, \dots, J\}$~\cite{talts2018sbc}.  Ranks are
+invariant under strictly monotone transformations, so the GeV and
+log-space analyses coincide.  We report the pooled rank histogram with a
+$\chi^2$ uniformity $p$-value and, separately, per-pixel $p$-value maps
+across the dead-region box.  The histogram shape identifies the failure
+mode: a U-shape indicates an under-dispersed posterior (truth falls in
+the tails too often), a central hump over-dispersion, and a monotone
+slope a systematic bias.
+
+\subsection{Joint coverage (TARP)}
+\label{sec:validation:tarp}
+
+Per-pixel ranks are insensitive to miscalibration of the
+\emph{correlations} between dead pixels.  Joint calibration over the
+$d = b^2$ box pixels is tested with the expected-coverage-probability
+estimator of Ref.~\cite{lemos2023tarp} (TARP).  Coordinates are
+standardized in log space using the pooled per-dimension mean and
+standard deviation of all posterior samples.  For each image a random
+reference point $\theta^{(i)}_r$ is drawn uniformly over the pooled
+per-dimension range of samples and truths, and
+\begin{equation}
+  f_i \;=\; \frac{1}{J} \sum_{j=1}^{J}
+    \mathbf{1}\!\left[\,
+      \bigl\lVert x^{(i,j)} - \theta^{(i)}_r \bigr\rVert_2
+      \;<\;
+      \bigl\lVert x^{\mathrm{true}}_{i} - \theta^{(i)}_r \bigr\rVert_2
+    \right].
+  \label{eq:tarp-f}
+\end{equation}
+Under exact calibration $f_i \sim \mathcal{U}(0,1)$, equivalently the
+expected coverage $\mathrm{ECP}(\alpha) = \Pr(f_i \le \alpha)$ lies on
+the diagonal.  We report the ECP curve, its maximum absolute deviation
+from the diagonal, and a Kolmogorov--Smirnov $p$-value for
+$f \sim \mathcal{U}(0,1)$.  Under-dispersion appears as an ECP curve
+sagging below the diagonal.
+
+\subsection{Pulls and central credible intervals}
+\label{sec:validation:pulls}
+
+Two complementary, more interpretable diagnostics are evaluated in log
+space.  The per-pixel pull
+\begin{equation}
+  z_{ip} = \frac{x^{\mathrm{true}}_{ip} - \widehat{\mu}_{ip}}
+                {\widehat{\sigma}_{ip}},
+  \qquad
+  \widehat{\mu}_{ip} = \tfrac{1}{J}\textstyle\sum_j x^{(i,j)}_p,
+  \quad
+  \widehat{\sigma}_{ip}^2 =
+      \tfrac{1}{J-1}\textstyle\sum_j
+      \bigl(x^{(i,j)}_p - \widehat{\mu}_{ip}\bigr)^2,
+  \label{eq:pull}
+\end{equation}
+is approximately standard normal for a calibrated, locally
+near-Gaussian posterior; the pooled pull mean measures bias and the
+pooled pull width the dispersion ratio (width $> 1$ $\Leftrightarrow$
+under-dispersed posterior).  Independently, central credible intervals
+at nominal levels $\gamma = 0.1, \dots, 0.9$ are formed from the
+empirical $\bigl(\tfrac{1\mp\gamma}{2}\bigr)$-quantiles of the $J$
+samples, and empirical coverage is compared to $\gamma$ both pooled over
+dead pixels and for the physics observable
+$\Sigma E = \sum_{p \in \mathrm{box}} E_p$ (in GeV), the latter probing
+a physically relevant joint functional of the posterior.
+
+\subsection{Comparison protocol and robustness}
+\label{sec:validation:protocol}
+
+All algorithms are evaluated on identical truth images, masks, and
+per-image random streams, so cross-algorithm differences are paired.
+The comparison figure overlays, per algorithm, the central-coverage
+curves and the deviation of the empirical rank CDF from uniformity.
+Statistical power at the study scale: pooled rank tests use
+$N b^2$ ranks across $J{+}1$ bins; the TARP ECP has standard error
+$\sim \sqrt{\alpha(1-\alpha)/N}$, so $N = 1000$ resolves coverage
+distortions at the few-percent level.  Analysis-level robustness
+safeguards: images containing non-finite samples are excluded and their
+count reported (a nonzero count indicates a sampler failure, not an
+analysis artifact), and partially completed runs are analyzed up to
+their checkpoint, enabling monitoring of running studies.
+
+\subsection{Generation-stage verification}
+\label{sec:validation:generation}
+
+Upstream of the inpainting study, the event-generation stage is verified
+against Ref.~\cite{torbunov2024calo}: tower-area $E_T$ spectra
+($1{\times}1$, $4{\times}4$, $7{\times}7$, $11{\times}11$, sliding
+windows, periodic in $\phi$) and the $\Sigma E_T$ distribution per
+centrality, overlaid across the five independently trained model seeds
+with seed-ratio panels; the event-averaged
+$\langle \sigma_{E_T}\rangle$ versus $\Sigma E_T$ profiles; regression
+anchors on $\langle \Sigma E_T \rangle$ per centrality (soft $\pm 5\%$
+checks against validated reference runs); and a monitor of the
+high-energy single-tower tail reporting the rate of towers above
+10~GeV per seed (towers of $\mathcal{O}(10\text{--}20)$~GeV are
+kinematically plausible at $\sqrt{s_{NN}} = 200$~GeV; only energies
+beyond 50~GeV are treated as unphysical).

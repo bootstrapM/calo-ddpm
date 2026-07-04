@@ -1,4 +1,4 @@
-\begin{thebibliography}{8}
+\begin{thebibliography}{10}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -56,5 +56,20 @@ Dmitrii Torbunov, Yi~Huang, Meifeng Lin, Yihui Ren, Yeonju Go, Timothy Rinn,
   and high-fidelity whole-event simulation in high-energy heavy-ion
   experiments.
 \newblock \emph{Physical Review C}, 110\penalty0 (3):\penalty0 034912, 2024.
+
+\bibitem[Talts et~al.(2018)Talts, Betancourt, Simpson, Vehtari, and
+  Gelman]{talts2018sbc}
+Sean Talts, Michael Betancourt, Daniel Simpson, Aki Vehtari, and Andrew Gelman.
+\newblock Validating bayesian inference algorithms with simulation-based
+  calibration.
+\newblock \emph{arXiv preprint arXiv:1804.06788}, 2018.
+
+\bibitem[Lemos et~al.(2023)Lemos, Coogan, Hezaveh, and
+  Perreault-Levasseur]{lemos2023tarp}
+Pablo Lemos, Adam Coogan, Yashar Hezaveh, and Laurence Perreault-Levasseur.
+\newblock Sampling-based accuracy testing of posterior estimators for general
+  inference.
+\newblock In \emph{International Conference on Machine Learning}, pages
+  19256--19273, 2023.
 
 \end{thebibliography}
