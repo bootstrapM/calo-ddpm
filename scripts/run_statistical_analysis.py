@@ -115,6 +115,21 @@ def analyze_run(rundir, seed=0):
     samples_gev = samples_gev[:done]
     truth_gev   = truth_gev[:done]
 
+    # exclude images with non-finite samples (a NaN here means the SAMPLER
+    # produced NaNs -- unfinished memmap rows are zeros, not NaNs)
+    finite = np.isfinite(samples_gev).all(axis=(1, 2, 3)) \
+           & np.isfinite(truth_gev).all(axis=(1, 2))
+    n_bad  = int((~finite).sum())
+    if n_bad:
+        print(f'WARNING [{rundir}]: {n_bad}/{done} images contain '
+              f'non-finite samples — excluded from analysis; '
+              f'investigate the sampler run!')
+        samples_gev = samples_gev[finite]
+        truth_gev   = truth_gev[finite]
+    if samples_gev.shape[0] == 0:
+        print(f'ERROR [{rundir}]: no finite images — skipping run')
+        return None
+
     n, j, b, _ = samples_gev.shape
     rng    = np.random.default_rng(seed)
     outdir = os.path.join(rundir, 'stats')
@@ -124,7 +139,8 @@ def analyze_run(rundir, seed=0):
     t_log = to_log(truth_gev)
 
     summary = {'rundir': rundir, 'algorithm': meta['algorithm'],
-               'box': b, 'n_images': int(n), 'n_samples': int(j)}
+               'box': b, 'n_images': int(n), 'n_samples': int(j),
+               'n_nonfinite_images_excluded': n_bad}
 
     # ---- SBC ranks --------------------------------------------------------
     ranks = sbc_ranks(samples_gev, truth_gev, rng)
@@ -258,7 +274,10 @@ def main():
 
     all_summaries, compare = [], []
     for rd in args.rundirs:
-        summary, cov, ranks, j = analyze_run(rd, seed=args.seed)
+        result = analyze_run(rd, seed=args.seed)
+        if result is None:
+            continue
+        summary, cov, ranks, j = result
         all_summaries.append(summary)
         compare.append((summary['algorithm'], summary['box'],
                         cov, ranks, j))
