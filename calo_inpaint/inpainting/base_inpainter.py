@@ -56,9 +56,17 @@ class BaseInpainter:
         )
 
     def predict_eps(self, x, s):
-        """eps_theta(x_s, t_map[s]); x may require grad (MCG / PiGDM)."""
+        """eps_theta(x_s, t_map[s]); x may require grad (MCG / PiGDM).
+
+        Grad-enabled evaluations ALWAYS run in fp32: PiGDM's stability at
+        early times relies on the near-cancellation
+        (I - sqrt(vbar) d(eps)/dx) / sqrt(alphabar), with 1/sqrt(alphabar)
+        up to ~150 for this schedule; bf16's ~0.4% relative error breaks
+        the cancellation and the unprojected guidance feedback then runs
+        away to inf/NaN within a few steps (verified empirically).
+        """
         t = self.sched.t_map[s].expand(x.shape[0])
-        if self.use_bf16 and x.is_cuda:
+        if self.use_bf16 and x.is_cuda and not x.requires_grad:
             with torch.autocast('cuda', dtype=torch.bfloat16):
                 eps = self.net(x, t)
             return eps.float()
