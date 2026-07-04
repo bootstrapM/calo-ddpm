@@ -42,25 +42,41 @@ class PiGDMInpainter(BaseInpainter):
     name = 'pigdm'
 
     def __init__(self, net, sched, device, seed=0, use_bf16=False,
-                 eta=1.0):
+                 eta=1.0, x0_clamp=(-7.0, 4.0)):
         super().__init__(net, sched, device, seed=seed, use_bf16=use_bf16)
         assert 0.0 <= eta <= 1.0, f'eta={eta} outside [0, 1]'
-        self.eta = float(eta)
+        self.eta      = float(eta)
+        self.x0_clamp = None if x0_clamp is None else \
+            (float(x0_clamp[0]), float(x0_clamp[1]))
 
     def step(self, s, x, y, mask):
         sched = self.sched
 
         with torch.enable_grad():
             x_in = x.detach().requires_grad_(True)
-            x0hat, eps_hat = self.predict_x0(x_in, s)
+            x0hat, _ = self.predict_x0(x_in, s)
+
+            # x0 clamping to the physical data range (log space) -- the
+            # clip_denoised=True convention of the published PiGDM /
+            # guided-diffusion implementations.  This is what BOUNDS the
+            # guidance feedback loop (x0hat -> cotangent -> vjp -> x):
+            # without it, any imperfection in the network Jacobian's
+            # Tweedie cancellation is amplified by 1/sqrt(alphabar) ~ 150
+            # at early steps and the chain diverges (observed on the
+            # trained model even in fp32).  clamp() has zero gradient in
+            # the saturated region, so the guidance also switches off
+            # exactly where x0hat is out of range.
+            if self.x0_clamp is not None:
+                x0hat = x0hat.clamp(*self.x0_clamp)
 
             cotangent = (mask * (y - x0hat)).detach()
             vjp = torch.autograd.grad(
                 (x0hat * cotangent).sum(), x_in
             )[0]
 
-        x0hat   = x0hat.detach()
-        eps_hat = eps_hat.detach()
+        x0hat = x0hat.detach()
+        # eps_hat consistent with the (possibly clamped) x0hat
+        eps_hat = sched.eps_from_x0(s, x.detach(), x0hat)
 
         sb_prev = sched.sbar[s - 1]
         vb_prev = sched.vbar[s - 1]

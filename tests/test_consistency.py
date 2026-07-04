@@ -185,6 +185,13 @@ def test_inpainters():
     except AssertionError:
         check('ddrm: rejects eta > 1', True)
 
+    # pigdm x0 clamp: inactive bounds must not change results at all
+    o1 = INPAINTERS['pigdm'](net, sc, DEVICE, seed=13,
+                             x0_clamp=(-20.0, 20.0)).inpaint(y, mask, 8)
+    o2 = INPAINTERS['pigdm'](net, sc, DEVICE, seed=13,
+                             x0_clamp=None).inpaint(y, mask, 8)
+    check('pigdm: inactive x0 clamp is a no-op', torch.equal(o1, o2))
+
     # base-class input handling: 2D inputs are canonicalized; non-binary
     # masks are rejected; a train-mode net is switched to eval
     net.train()

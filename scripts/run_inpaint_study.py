@@ -61,6 +61,13 @@ def parse_cmdargs():
     p.add_argument('--ddrm-eta-b',       type=float, default=1.0)
     p.add_argument('--mcg-alpha',        type=float, default=1.0)
     p.add_argument('--pigdm-eta',        type=float, default=1.0)
+    p.add_argument('--pigdm-x0-clamp',   type=float, nargs=2,
+                   default=[-7.0, 4.0], metavar=('LO', 'HI'),
+                   help='log-space x0hat clamp bounding the PiGDM guidance '
+                        'feedback (clip_denoised convention)')
+    p.add_argument('--pigdm-no-x0-clamp', action='store_true',
+                   help='disable the PiGDM x0hat clamp (diverges on the '
+                        'trained model; for ablation only)')
     return p.parse_args()
 
 
@@ -74,6 +81,8 @@ def build_inpainter(args, net, sched, device):
         kwargs['alpha'] = args.mcg_alpha
     elif args.algorithm == 'pigdm':
         kwargs['eta'] = args.pigdm_eta
+        kwargs['x0_clamp'] = None if args.pigdm_no_x0_clamp \
+            else tuple(args.pigdm_x0_clamp)
     return INPAINTERS[args.algorithm](net, sched, device, **kwargs)
 
 
@@ -151,6 +160,8 @@ def main():
             'ddrm_eta_b'      : args.ddrm_eta_b,
             'mcg_alpha'       : args.mcg_alpha,
             'pigdm_eta'       : args.pigdm_eta,
+            'pigdm_x0_clamp'  : None if args.pigdm_no_x0_clamp
+                                else list(args.pigdm_x0_clamp),
         },
         'units'   : 'GeV (dead-region pixels only)',
         'created' : datetime.datetime.now().isoformat(timespec='seconds'),

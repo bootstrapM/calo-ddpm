@@ -262,10 +262,22 @@ parametrizations [Algorithm~1 of Ref.~\cite{song2023pigdm}]:
   \label{eq:pigdm-update}
 \end{equation}
 with $\eta = 1$ (for which the first three terms are equal in law to the
-ancestral step).  Unlike the other four algorithms, $\Pi$GDM enforces
-consistency during sampling only through the guidance term, so the known
-region of its raw output matches $y$ approximately rather than
-identically.  For the noise-free setting we project the known region to
+ancestral step).  Following the convention of published implementations
+(\texttt{clip\_denoised}), $\hat x_0$ is clamped to the physical data
+range in log space before entering the update and the guidance
+cotangent; this is essential rather than cosmetic.  The guidance forms a
+feedback loop ($\hat x_0 \to$ residual $\to$ vector--Jacobian product
+$\to x_t \to \hat x_0$) that is bounded only by the near-cancellation
+$(\mathbf{I} - \sqrt{1-\bar\alpha_t}\,\partial\hat\epsilon/\partial x_t)
+/\sqrt{\bar\alpha_t}$; with $1/\sqrt{\bar\alpha_t}$ reaching
+$\sim\!150$ on this schedule, the trained network's residual Jacobian
+imperfection is amplified multiplicatively and the unclamped chain
+diverges within a few steps (in single precision as well).  The clamp
+bounds the loop and, having zero gradient in saturation, switches the
+guidance off exactly where $\hat x_0$ leaves the physical range.
+Unlike the other four algorithms, $\Pi$GDM enforces consistency during
+sampling only through the guidance term, so the known region of its raw
+output matches $y$ approximately rather than identically.  For the noise-free setting we project the known region to
 $y$ at the final step; since this occurs after the last network
 evaluation, it is pure post-processing---it cannot affect the sampling
 dynamics or the dead-region pixels on which the analysis is based.
