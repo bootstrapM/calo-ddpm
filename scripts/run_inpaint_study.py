@@ -51,6 +51,11 @@ def parse_cmdargs():
     p.add_argument('--eta0',  type=int, default=8)
     p.add_argument('--phi0',  type=int, default=28)
     p.add_argument('-S', '--steps', type=int, default=1000)
+    p.add_argument('--images-per-batch', type=int, default=1,
+                   help='truth images processed jointly per reverse chain; '
+                        'GPU batch = images_per_batch * n_samples.  Resume '
+                        'and RNG streams are chunk-aligned, so results are '
+                        'reproducible only for a fixed value.')
     p.add_argument('--seed',  type=int, default=0)
     p.add_argument('--device', default='cuda')
     p.add_argument('--bf16', action='store_true')
@@ -146,6 +151,7 @@ def main():
         'image_offset': args.image_offset,
         'n_images'    : n_img,
         'n_samples'   : args.n_samples,
+        'images_per_batch': args.images_per_batch,
         'box'         : b,
         'eta0'        : args.eta0,
         'phi0'        : args.phi0,
@@ -169,34 +175,43 @@ def main():
     with open(os.path.join(rundir, 'metadata.json'), 'wt') as f:
         json.dump(meta, f, indent=2)
 
+    # chunked over images: GPU batch = K * n_samples.  RNG is seeded per
+    # chunk, so resume restarts from the last full chunk and results are
+    # reproducible for a fixed --images-per-batch.
+    K = max(1, args.images_per_batch)
+    start = start - (start % K)
+
     t_start = datetime.datetime.now()
-    for i in range(start, n_img):
+    for i in range(start, n_img, K):
+        k = min(K, n_img - i)
         # np.array(..., copy) -> writable buffer; the events file is a
         # read-only memmap and torch.from_numpy warns on non-writable input
         ev_gev = torch.from_numpy(
-            np.array(events[args.image_offset + i], dtype=np.float32)
-        ).to(device).unsqueeze(0)                       # (1, 24, 64)
+            np.array(events[args.image_offset + i:
+                            args.image_offset + i + k], dtype=np.float32)
+        ).to(device).unsqueeze(1)                       # (k, 1, 24, 64)
         y = lognorm.normalize(ev_gev)                   # log space
 
-        # per-image reseeding: reproducible and resume-exact
+        # per-chunk reseeding: reproducible and resume-exact
         inp.reseed(args.seed * 1000003 + i)
-        samples = inp.inpaint(y, mask, args.n_samples)  # (n, 1, 24, 64), log
+        samples = inp.inpaint(y, mask, args.n_samples)  # (k*n, 1, 24, 64)
 
         box_gev = lognorm.denormalize(
             samples[:, 0, sl_e, sl_p]
-        ).float().cpu().numpy()
+        ).float().cpu().numpy().reshape(k, args.n_samples, b, b)
 
-        results[i] = box_gev
+        results[i:i + k] = box_gev
         results.flush()
 
         with open(progress, 'wt') as f:
-            f.write(f'{i + 1} / {n_img}  alg={args.algorithm} box={b}\n')
+            f.write(f'{i + k} / {n_img}  alg={args.algorithm} box={b}\n')
 
-        if (i + 1) % 10 == 0 or i == start:
+        done_n = i + k
+        if (done_n - start) % max(10, K) < K or i == start:
             dt  = (datetime.datetime.now() - t_start).total_seconds()
-            rate = (i + 1 - start) / max(dt, 1e-9)
-            eta_s = (n_img - i - 1) / max(rate, 1e-9)
-            print(f'[{run_name}] {i + 1}/{n_img} '
+            rate = (done_n - start) / max(dt, 1e-9)
+            eta_s = (n_img - done_n) / max(rate, 1e-9)
+            print(f'[{run_name}] {done_n}/{n_img} '
                   f'({rate:.2f} img/s, eta {eta_s/3600:.2f} h)', flush=True)
 
     print(f'done: {res_path}')

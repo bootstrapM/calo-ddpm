@@ -76,10 +76,13 @@ class BaseInpainter:
         eps = self.predict_eps(x, s)
         return self.sched.x0_from_eps(s, x, eps), eps
 
-    def init_x(self, y, n_samples):
-        """x_S ~ N(0, vbar_S I) (prior marginal), batched over samples."""
-        shape = (n_samples, *y.shape[-3:])
-        x = torch.empty(shape, device=self.device)
+    def init_x(self, y, n_samples=None):
+        """x_S ~ N(0, vbar_S I) (prior marginal).
+
+        y arrives from inpaint() already expanded to the full sample batch
+        (K * n_samples, 1, H, W); its leading dimension defines the batch.
+        """
+        x = torch.empty(y.shape, device=self.device)
         x.normal_(generator=self.prg)
         return self.sched.marginal_std() * x
 
@@ -100,14 +103,25 @@ class BaseInpainter:
 
     # -- main loop ---------------------------------------------------------
     def inpaint(self, y, mask, n_samples):
-        """Draw n_samples posterior samples.  y, mask: (1, H, W) on device."""
+        """Draw n_samples posterior samples per image.
+
+        y    : (1, H, W) for a single image, or (K, 1, H, W) for K images
+               batched jointly through the reverse process (GPU batch is
+               then K * n_samples); mask is shared across images.
+        Returns (K * n_samples, 1, H, W) in log space, ordered
+        image-major: sample j of image k is row k * n_samples + j.
+        """
         y    = self._canonical_image(y.to(self.device).float(), 'y')
         mask = self._canonical_image(mask.to(self.device).float(), 'mask')
 
         if not torch.all((mask == 0) | (mask == 1)):
             raise ValueError('mask must be binary: 1 = known/live, 0 = dead')
 
-        x = self.init_x(y, n_samples)
+        # expand K images to the sample batch (elementwise algorithms
+        # broadcast y/mask against x throughout)
+        y = y.repeat_interleave(n_samples, dim=0)   # (K * n_samples, 1, H, W)
+
+        x = self.init_x(y, 0)                       # shape from y itself
 
         for s in range(self.sched.S, 0, -1):
             x = self.step(s, x, y, mask)

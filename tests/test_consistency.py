@@ -192,6 +192,24 @@ def test_inpainters():
                              x0_clamp=None).inpaint(y, mask, 8)
     check('pigdm: inactive x0 clamp is a no-op', torch.equal(o1, o2))
 
+    # batched-images path: K truths jointly, image-major output; per-image
+    # known regions exact and dead-region posterior still correct
+    K, Jb = 3, 400
+    g2 = torch.Generator().manual_seed(77)
+    truths = MU0 + SIGMA0 * torch.randn(K, 1, H, W, generator=g2)
+    y_multi = truths * mask
+    for name in ('ddnm', 'ddrm', 'repaint'):
+        outK = INPAINTERS[name](net, sc, DEVICE, seed=5).inpaint(
+            y_multi, mask, Jb).reshape(K, Jb, 1, H, W)
+        kn = max(((outK[k, :, 0] - truths[k, 0]) * mask[0]).abs().max().item()
+                 for k in range(K))
+        dead = outK[:, :, 0][:, :, 4:4 + box, 5:5 + box]
+        m_, s_ = dead.mean().item(), dead.std().item()
+        ok = (kn < 1e-4 and abs(m_ - MU0) < 0.1 * SIGMA0
+              and 0.85 < s_ / SIGMA0 < 1.06)
+        check(f'{name}: K-image batched path', ok,
+              f'known|dev|={kn:.1e} mean={m_:.3f} std={s_:.3f}')
+
     # base-class input handling: 2D inputs are canonicalized; non-binary
     # masks are rejected; a train-mode net is switched to eval
     net.train()

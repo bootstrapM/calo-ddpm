@@ -56,11 +56,13 @@ class DDRMInpainter(BaseInpainter):
         self.eta   = float(eta)
         self.eta_b = float(eta_b)
 
-    def init_x(self, y, n_samples):
-        """DDRM init: observed dims centered on y, dead dims on 0."""
+    def init_x(self, y, n_samples=None):
+        """DDRM init: observed dims centered on y, dead dims on 0.
+
+        y arrives already expanded to the full sample batch (see base).
+        """
         sched = self.sched
-        shape = (n_samples, *y.shape[-3:])
-        noise = torch.empty(shape, device=self.device)
+        noise = torch.empty(y.shape, device=self.device)
         noise.normal_(generator=self.prg)
 
         x_obs  = sched.sbar[sched.S] * y + sched.vbar[sched.S].sqrt() * noise
