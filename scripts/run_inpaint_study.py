@@ -34,6 +34,9 @@ from calo_inpaint.ddpm_sampler import (
 )
 from calo_inpaint.masks import square_mask
 from calo_inpaint.inpainting import INPAINTERS
+from calo_inpaint.guided import GUIDED_INPAINTERS
+
+ALL_INPAINTERS = {**INPAINTERS, **GUIDED_INPAINTERS}
 
 
 def parse_cmdargs():
@@ -42,7 +45,8 @@ def parse_cmdargs():
     p.add_argument('--events',    required=True,
                    help='truth events .npy (N, 24, 64), GeV')
     p.add_argument('--outdir',    required=True)
-    p.add_argument('--algorithm', required=True, choices=sorted(INPAINTERS))
+    p.add_argument('--algorithm', required=True,
+                   choices=sorted(ALL_INPAINTERS))
     p.add_argument('--n-images',  type=int, default=1000)
     p.add_argument('--n-samples', type=int, default=50)
     p.add_argument('--image-offset', type=int, default=0,
@@ -73,6 +77,13 @@ def parse_cmdargs():
     p.add_argument('--pigdm-no-x0-clamp', action='store_true',
                    help='disable the PiGDM x0hat clamp (diverges on the '
                         'trained model; for ablation only)')
+    # gradient-guided variants adapted from the CelebA implementation
+    p.add_argument('--mcg2-scale',   type=float, default=0.5,
+                   help='mcg2 guidance_scale (annealed by 1-alphabar)')
+    p.add_argument('--pigdm2-scale', type=float, default=0.5,
+                   help='pigdm2 guidance_scale (annealed by (1-alphabar)*r_t)')
+    p.add_argument('--pigdm2-rmax',  type=float, default=10.0,
+                   help='clamp on the pigdm2 SNR factor r_t')
     return p.parse_args()
 
 
@@ -88,7 +99,14 @@ def build_inpainter(args, net, sched, device):
         kwargs['eta'] = args.pigdm_eta
         kwargs['x0_clamp'] = None if args.pigdm_no_x0_clamp \
             else tuple(args.pigdm_x0_clamp)
-    return INPAINTERS[args.algorithm](net, sched, device, **kwargs)
+    elif args.algorithm == 'mcg2':
+        kwargs = {'seed': args.seed, 'guidance_scale': args.mcg2_scale,
+                  'x0_clamp': tuple(args.pigdm_x0_clamp)}
+    elif args.algorithm == 'pigdm2':
+        kwargs = {'seed': args.seed, 'guidance_scale': args.pigdm2_scale,
+                  'r_max': args.pigdm2_rmax,
+                  'x0_clamp': tuple(args.pigdm_x0_clamp)}
+    return ALL_INPAINTERS[args.algorithm](net, sched, device, **kwargs)
 
 
 def main():
@@ -168,6 +186,9 @@ def main():
             'pigdm_eta'       : args.pigdm_eta,
             'pigdm_x0_clamp'  : None if args.pigdm_no_x0_clamp
                                 else list(args.pigdm_x0_clamp),
+            'mcg2_scale'      : args.mcg2_scale,
+            'pigdm2_scale'    : args.pigdm2_scale,
+            'pigdm2_rmax'     : args.pigdm2_rmax,
         },
         'units'   : 'GeV (dead-region pixels only)',
         'created' : datetime.datetime.now().isoformat(timespec='seconds'),
