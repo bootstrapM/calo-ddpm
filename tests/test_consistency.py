@@ -248,10 +248,57 @@ def test_inpainters():
           f'calls={cnet.calls}, expected={expected}')
 
 
+def test_guided_v2():
+    """Clean-room mcg2 / pigdm2 (calo_inpaint.guided)."""
+    from calo_inpaint.guided import GUIDED_INPAINTERS
+
+    net = AnalyticEpsNet(T, BETA1, BETAT, MU0, SIGMA0).to(DEVICE)
+    sc  = make_subsampled_schedule(T, S, BETA1, BETAT, DEVICE)
+
+    g = torch.Generator().manual_seed(123)
+    x_true = MU0 + SIGMA0 * torch.randn(1, H, W, generator=g)
+    box    = 3
+    mask   = square_mask(box, 4, 5, height=H, width=W, device=DEVICE)
+    y      = x_true * mask
+    n_smp  = 1500
+
+    for name, cls in sorted(GUIDED_INPAINTERS.items()):
+        out  = cls(net, sc, DEVICE, seed=7).inpaint(y, mask, n_smp)
+        dead = out[:, 0][:, 4:4 + box, 5:5 + box]
+        m, s_ = dead.mean().item(), dead.std().item()
+        check(f'{name}: dead-region posterior', abs(m - MU0) < 0.12 * SIGMA0
+              and 0.88 < s_ / SIGMA0 < 1.12,
+              f'mean={m:.3f} (exp {MU0}), std={s_:.3f} (exp {SIGMA0})')
+        kn = ((out[:, 0] - x_true) * mask[0]).abs().max().item()
+        check(f'{name}: known region exact', kn < 1e-4, f'max|dev|={kn:.1e}')
+        i1 = cls(net, sc, DEVICE, seed=11).inpaint(y, mask, 8)
+        i2 = cls(net, sc, DEVICE, seed=11).inpaint(y, mask, 8)
+        check(f'{name}: reproducible given seed', torch.equal(i1, i2))
+
+    # mcg2 smoothed norm: finite gradient at EXACTLY zero residual
+    # (torch's plain ||.|| has NaN gradient at 0 — the v1 failure mode)
+    r = torch.zeros(4, 1, H, W, requires_grad=True)
+    R = (r.pow(2).flatten(1).sum(1) + 1e-16).sqrt()
+    gz = torch.autograd.grad(R.sum(), r)[0]
+    check('mcg2: finite gradient at zero residual',
+          torch.isfinite(gz).all().item())
+
+    # K-image batching path
+    K = 2
+    truths = MU0 + SIGMA0 * torch.randn(K, 1, H, W,
+                                        generator=torch.Generator().manual_seed(3))
+    outK = GUIDED_INPAINTERS['mcg2'](net, sc, DEVICE, seed=5).inpaint(
+        truths * mask, mask, 200).reshape(K, 200, 1, H, W)
+    kn = max(((outK[k, :, 0] - truths[k, 0]) * mask[0]).abs().max().item()
+             for k in range(K))
+    check('mcg2: K-image batched path exact known region', kn < 1e-4)
+
+
 if __name__ == '__main__':
     torch.manual_seed(0)
     test_schedule()
     test_unconditional()
     test_inpainters()
+    test_guided_v2()
     print(f'\n{"ALL TESTS PASSED" if n_fail == 0 else f"{n_fail} FAILURES"}')
     sys.exit(1 if n_fail else 0)
