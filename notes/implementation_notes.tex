@@ -1,0 +1,291 @@
+% ===========================================================================
+% Standalone implementation notes for the calo-ddpm inpainting algorithms.
+% Compile:  latexmk -pdf implementation_notes.tex
+% The gradient-based sections describe the CURRENT implementations
+% (calo_inpaint/guided/, adapted from the CelebA-validated code).
+% ===========================================================================
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage[numbers, sort&compress]{natbib}
+\usepackage{hyperref}
+
+\title{Implementation notes: training-free noise-free inpainting\\
+       of sPHENIX calorimeter images with a DDPM prior}
+\author{calo-ddpm inpainting study}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Setting and notation}
+\label{sec:setup}
+
+\paragraph{Data and model space.}
+Calorimeter events are $24 \times 64$ tower-$E_T$ images in the
+$(\eta,\phi)$ plane, in GeV.  All sampling operates in the normalized
+log space $x = \ln\!\bigl(\max(E_T, E_{\min})\bigr)$,
+$E_{\min}=10^{-3}$~GeV; outputs are mapped back by $E_T = e^{x}$.
+The physical log-space range used by all clamps below is
+$[x_{\min}, x_{\max}] = [-7,\, 4]$ ($\approx$ 0.9~MeV to 55~GeV).
+
+\paragraph{Diffusion prior.}
+One pre-trained DDPM~\cite{ho2020ddpm} per centrality class
+\cite{torbunov2024calo}, used frozen.  Variance-preserving forward
+process with $T = 8000$ and linear $\beta_t$ from $b/T$ to $1000\,b/T$,
+$b = 0.02$ (0--10\%) or $0.10$ (40--50\%); the schedule is reconstructed
+exactly from each checkpoint's training configuration.  With
+$\bar\alpha_t = \prod_{i \le t} (1 - \beta_i)$ we abbreviate
+\begin{equation}
+  \bar s_t = \sqrt{\bar\alpha_t}, \qquad
+  \bar v_t = 1 - \bar\alpha_t ,
+\end{equation}
+stored in arrays of length $S{+}1$ with an identity transition padded at
+index~0 ($\bar s_0 = 1$, $\bar v_0 = 0$).  Sampling runs on a subsampled
+grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$
+($\tau = \mathrm{round}(\mathrm{linspace}(1,T,S))$, $S = 1000$ for the
+study); the network is always conditioned on the \emph{original} indices
+$\tau_k$.  Below, one reverse step goes from level $s \equiv \tau_k$ to
+$s{-}1 \equiv \tau_{k-1}$, with all quantities indexed by the subsampled
+position.
+
+\paragraph{Denoiser and transport.}
+The $\epsilon$-network gives the Tweedie estimate and the (jump-aware)
+ancestral step used by all algorithms:
+\begin{align}
+  \hat x_0 &= \frac{x_s - \sqrt{\bar v_s}\,
+              \epsilon_\theta(x_s, \tau_k)}{\bar s_s},
+  \label{eq:x0hat}\\
+  \beta_{(k)} &= 1 - \frac{\bar s_s^2}{\bar s_{s-1}^2}, \qquad
+  \mathrm{ddpm\_step}(x_s, \hat x_0) =
+      \frac{\bar s_{s-1}\beta_{(k)}}{\bar v_s}\,\hat x_0
+    + \frac{(\bar s_s/\bar s_{s-1})\,\bar v_{s-1}}{\bar v_s}\, x_s
+    + \sqrt{\tfrac{\beta_{(k)}\bar v_{s-1}}{\bar v_s}}\;\xi .
+  \label{eq:ddpmstep}
+\end{align}
+At $s = 1$ the padding gives exact collapse,
+$\mathrm{ddpm\_step} = \hat x_0$ with zero variance.  The chain is
+initialized at the prior marginal $x_S \sim \mathcal{N}(0, \bar v_S
+\mathbf{I})$.  The forward (re-noising) kernels used below are
+$q_{s-1}(y) = \bar s_{s-1} y + \sqrt{\bar v_{s-1}}\,\xi$
+(known-content branch) and the one-step jump
+$x_s = (\bar s_s/\bar s_{s-1})\,x_{s-1} + \sqrt{\beta_{(k)}}\,\xi$
+(RePaint time travel).
+
+\paragraph{Problem.}
+Noise-free masking: binary $m$ (1 = known/live, 0 = dead),
+measurement $y = m \odot x_0^{\mathrm{true}}$, $\sigma_y = 0$; target
+$p(x_0 \mid m \odot x_0 = y)$.  $A = \operatorname{diag}(m)$ is its own
+pseudoinverse on its range, so no SVD machinery appears anywhere.
+Posterior sampling batches $J$ samples per truth image ($J = 50$), with
+$K$ images processed jointly (GPU batch $K \! \cdot \! J$); results are
+stored for the dead region only, in GeV.
+
+\section{Projection-type algorithms
+         (\texttt{calo\_inpaint/inpainting/})}
+\label{sec:projection}
+
+\subsection{RePaint}
+Per level $s$, repeated $U$ times ($U = 10$; a single pass at $s = 1$,
+where the extra passes of the published Algorithm~1 are deterministic
+recomputations):
+\begin{align}
+  x^{\mathrm{known}} &= q_{s-1}(y), &
+  x^{\mathrm{dead}} &= \mathrm{ddpm\_step}(x_s, \hat x_0), &
+  x_{s-1} &= m \, x^{\mathrm{known}} + (1{-}m)\, x^{\mathrm{dead}},
+\end{align}
+with the one-step forward jump between repetitions.  The known branch is
+noised to level $s{-}1$ (\emph{not} $s$) so both branches coincide in
+time after the step --- the off-by-one variant biases the dead-region
+boundary.  Output known region equals $y$ exactly
+($\bar s_0 = 1$, $\bar v_0 = 0$).
+
+\subsection{DDNM}
+Range/null-space rectification of the denoised estimate
+\cite{wang2022ddnm}, exact for noiseless masking:
+$\hat x_0 \leftarrow m\,y + (1{-}m)\,\hat x_0$, followed by
+Eq.~(\ref{eq:ddpmstep}).  No noisy-case ($\Sigma$-scaled) corrections
+are required.  Output equals the projected $\hat x_0$ at the last step;
+known region exact.
+
+\subsection{DDRM}
+The spectral variational posterior of Ref.~\cite{kawar2022ddrm}
+specializes (pixel basis, $\sigma_y = 0$) to
+\begin{align}
+  \text{dead:}\quad
+  x_{s-1} &= \bar s_{s-1}\hat x_0
+     + \sqrt{(1-\eta^2)\,\bar v_{s-1}}\;\hat\epsilon
+     + \eta\sqrt{\bar v_{s-1}}\;\xi,\\
+  \text{known:}\quad
+  x_{s-1} &= \bar s_{s-1}\bigl[(1-\eta_b)\hat x_0 + \eta_b\, y\bigr]
+     + \sqrt{\bar v_{s-1}}\;\xi',
+\end{align}
+with $\eta = 0.85$, $\eta_b = 1$ (published defaults) and matching
+initialization (known pixels start at $q_S(y)$).  The known region is
+additionally projected to $y$ at the final step (a no-op at
+$\eta_b = 1$).  Two properties established for this noise-free limit:
+(i) the dead-pixel update is the only DDIM-type transport among the
+implemented algorithms, and its $\eta$ never passes through the
+ancestral point ($\eta \to 1$ degenerates to re-noising $\hat x_0$);
+(ii) with an \emph{exact} denoiser it under-disperses the posterior
+(std ratio $\approx 0.86$ at $\eta = 0.85$; $\to 1$ as $\eta \to 0$,
+$\approx 0.70$ at $\eta = 1$; independent of $S$) --- intrinsic to the
+variational construction, not an implementation artifact.
+
+\section{Gradient-guided algorithms (\texttt{calo\_inpaint/guided/})}
+\label{sec:guided}
+
+The gradient-based algorithms in production are adaptations of an
+implementation developed and validated on CelebA image inpainting.
+Both follow one template per reverse step; they differ only in the loss
+argument and the guidance weight.  \textbf{Bookkeeping note:} these are
+\emph{not} the published MCG~\cite{chung2022mcg} /
+$\Pi$GDM~\cite{song2023pigdm} algorithms: both carry a RePaint-style
+per-step known-region paste (absent from published $\Pi$GDM), a clamped
+transport estimate, and a scalar annealed guidance weight in place of the
+exact guidance coefficients.  They are accurately described as
+``projection $+$ annealed consistency-gradient guidance'' and should be
+cited as MCG-inspired / $\Pi$GDM-inspired variants.
+
+\subsection{Common template}
+\begin{enumerate}
+  \item $\hat x_0$ from Eq.~(\ref{eq:x0hat}); clamped copy
+        $\hat x_0^{c} = \mathrm{clip}(\hat x_0, x_{\min}, x_{\max})$
+        used for transport.
+  \item Consistency loss on the \emph{known} region, per sample
+        (mean over pixel dimensions),
+        \begin{equation}
+          \mathcal{L} = \frac{1}{D}\bigl\lVert m \odot (\chi - y)
+                        \bigr\rVert_2^2 ,
+          \qquad
+          g = \nabla_{x_s} \mathcal{L}
+          \quad\text{(through the frozen network)},
+          \label{eq:loss}
+        \end{equation}
+        where $\chi$ is algorithm-specific (below) and $D$ the pixel
+        count.  The squared loss has a smooth gradient everywhere ---
+        in particular no $0/0$ at zero residual, a failure mode of
+        $\lVert\cdot\rVert_2$-based losses whose autograd gradient is
+        NaN at exactly zero and at overflow.
+  \item Per-sample gradient clipping,
+        $g \leftarrow g \cdot \min\!\bigl(1, 1/\lVert g\rVert_2\bigr)$
+        (per sample, not per batch: a global norm would shrink the
+        guidance with the study batch $K\!\cdot\!J$; per-sample
+        preserves the single-image behavior of the original code at any
+        batch size).
+  \item Guided transport on the dead region and hard paste of the known
+        region at level $s{-}1$:
+        \begin{align}
+          x^{\mathrm{dead}} &= \mathrm{ddpm\_step}(x_s, \hat x_0^{c})
+                               \;-\; \lambda_s\, g, &
+          x_{s-1} &= m\, q_{s-1}(y) + (1{-}m)\, x^{\mathrm{dead}},
+        \end{align}
+        with $q_{0}(y) = y$; a final clean paste follows the loop.
+        The annealed weight $\lambda_s$ is strong at high noise and
+        vanishes as the chain sharpens.
+\end{enumerate}
+All gradient evaluations run in fp32 (no autocast), and every step
+carries finiteness tripwires: a diverging chain raises with the step
+index rather than writing NaNs to disk.
+
+\subsection{MCG-inspired variant (\texttt{mcg2})}
+Loss argument $\chi = \hat x_0^{c}$ (clamped) and
+\begin{equation}
+  \lambda_s = g_{\mathrm{s}} \,(1 - \bar\alpha_s),
+  \qquad g_{\mathrm{s}} = 0.5 .
+\end{equation}
+
+\subsection{$\Pi$GDM-inspired variant (\texttt{pigdm2})}
+Loss argument $\chi = \hat x_0$ (unclamped) and a clamped SNR-like
+pseudoinverse weight,
+\begin{equation}
+  r_s = \min\!\left(\frac{1-\bar\alpha_s}{\bar\alpha_s + 10^{-8}},\;
+        r_{\max}\right), \qquad
+  \lambda_s = g_{\mathrm{s}}\,(1-\bar\alpha_s)\, r_s ,
+  \qquad g_{\mathrm{s}} = 0.5,\; r_{\max} = 10 .
+\end{equation}
+The cap $r_{\max}$ bounds the weight where
+$\bar\alpha_s \to 0$ (early chain), where the uncapped ratio reaches
+$\mathcal{O}(10^4)$ on this schedule.
+
+\subsection{Stability rationale (lessons from the discarded ports)}
+\label{sec:guided:stability}
+
+Faithful ports of published MCG/$\Pi$GDM failed on the trained
+calorimeter model, and the mechanisms are worth recording:
+\begin{enumerate}
+  \item \emph{Amplification.}  Eq.~(\ref{eq:x0hat}) multiplies network
+        error by $1/\bar s_s$, up to $\sim 150$ on this schedule; the
+        guidance Jacobian $\partial \hat x_0/\partial x_s$ carries a
+        second such factor.  Boundedness of exact-$\Pi$GDM-style
+        guidance relies on the near-cancellation
+        $(\mathbf{I} - \sqrt{\bar v_s}\,\partial\hat\epsilon/\partial
+        x)/\bar s_s$, which holds for an ideal denoiser but not for the
+        trained network (nor under bf16, whose $\sim 0.4\%$ error breaks
+        it outright).  Without a per-step projection, the resulting
+        feedback loop diverges within a few steps --- reproduced
+        empirically in single precision.
+  \item \emph{Norm-loss singularities.}  Losses of the form
+        $\lVert r \rVert_2$ have autograd gradient $r/\lVert r\rVert$,
+        which is NaN both at $r = 0$ (exact-zero residual) and at
+        overflow ($\Sigma r^2 \to \infty$); the squared, per-sample-mean
+        loss of Eq.~(\ref{eq:loss}) has neither.
+  \item \emph{What actually stabilizes the working variant:} the
+        per-step known-region paste bounds the state trajectory, the
+        clamped transport estimate bounds the mean, the per-sample
+        gradient clip bounds the correction, and the annealed
+        $\lambda_s$ removes guidance precisely where the chain is most
+        error-amplifying.  The cost is deviation from the published
+        algorithms, which is why these arms are labeled
+        ``-inspired'' throughout.
+\end{enumerate}
+
+\section{Common infrastructure and validation}
+\label{sec:infra}
+
+\begin{table}[h]
+  \centering
+  \caption{Implemented algorithms and defaults.  ``Exact $y$'': known
+  region of the output equals the measurement identically.  NFEs per
+  posterior sample; bwd = additional backward pass per step.}
+  \label{tab:summary}
+  \begin{tabular}{llllc}
+    \toprule
+    Algorithm & Module & Hyperparameters & Exact $y$ & NFEs \\
+    \midrule
+    RePaint & \texttt{inpainting/repaint} & $U{=}10$ & yes & $U(S{-}1){+}1$ \\
+    DDNM    & \texttt{inpainting/ddnm}    & --- & yes & $S$ \\
+    DDRM    & \texttt{inpainting/ddrm}    & $\eta{=}0.85$, $\eta_b{=}1$ & yes & $S$ \\
+    MCG-inspired & \texttt{guided/mcg2}   & $g_{\mathrm{s}}{=}0.5$ & yes & $S$ (+bwd) \\
+    $\Pi$GDM-inspired & \texttt{guided/pigdm2} &
+        $g_{\mathrm{s}}{=}0.5$, $r_{\max}{=}10$ & yes & $S$ (+bwd) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Reproducibility.}
+Each study run draws from dedicated seeded generators, re-seeded per
+image chunk ($\mathrm{seed} \cdot 1000003 + \mathrm{chunk\ start}$), so
+runs are bitwise reproducible for fixed \texttt{--images-per-batch} and
+resume exactly from the last completed chunk.  All run parameters are
+recorded in a \texttt{metadata.json} next to the results.
+
+\paragraph{Validation.}
+Three independent checks back the implementations.
+(i)~\emph{Schedule cross-check}: the reconstructed schedule, subsampling,
+and posterior coefficients agree with the original training code of
+Ref.~\cite{torbunov2024calo} to single precision.
+(ii)~\emph{Analytic posterior test}: for an i.i.d.\ Gaussian prior the
+optimal $\epsilon$-predictor is closed-form and the dead-pixel posterior
+is known exactly; all five production algorithms reproduce it to
+sampling accuracy, and all return the known region exactly.
+(iii)~\emph{Adversarial boundedness}: with a random-weight (worst-case
+Jacobian) network on the full $T = 8000$ schedule, the guided algorithms
+remain finite and range-bounded over the entire chain --- the
+configuration under which exact-$\Pi$GDM-style guidance diverges.
+
+\bibliographystyle{unsrtnat}
+\bibliography{inpainting_methods}
+
+\end{document}
