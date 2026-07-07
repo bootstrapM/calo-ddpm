@@ -40,7 +40,7 @@ Here we quickly outline the diffusion model processes. In the variance-preservin
   \bar s_t = \sqrt{\bar\alpha_t}, \qquad
   \bar v_t = 1 - \bar\alpha_t ,
 \end{equation}
-stored in arrays of length $S{+}1$ with an identity transition padded at index~0 ($\bar s_0 = 1$, $\bar v_0 = 0$).  Sampling runs on a subsampled grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$ ($\tau = \mathrm{round}(\mathrm{linspace}(1,T,S))$, $S = 1000$ for the study); the network is always conditioned on the \emph{original} indices $\tau_k$.  Below, one reverse step goes from level $s \equiv \tau_k$ to $s{-}1 \equiv \tau_{k-1}$, with all quantities indexed by the subsampled position.
+stored in arrays of length $S{+}1$ with an identity transition padded at index~0 ($\bar s_0 = 1$, $\bar v_0 = 0$).  Sampling runs on a subsampled grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$ ($\tau = \mathrm{round}(\mathrm{linspace}(1,T,S))$; the calorimeter study runs generation \emph{and} inpainting on the full grid, $S = T = 8000$, so the machinery below is exercised with the identity subsampling); the network is always conditioned on the \emph{original} indices $\tau_k$.  Below, one reverse step goes from level $s \equiv \tau_k$ to $s{-}1 \equiv \tau_{k-1}$, with all quantities indexed by the subsampled position.
 
 We took the trained weights of the pre-trained DDPM~\cite{ho2020ddpm} per centrality class \cite{torbunov2024calo}. 
 

@@ -17,19 +17,21 @@ MODEL_ID="${MODEL_ID:-google/ddpm-ema-celebahq-256}"
 IMAGES_DIR="${IMAGES_DIR:-${ROOT}/generated_images}"
 STUDY_DIR="${STUDY_DIR:-${ROOT}/inpaint_study}"
 
-N_GEN="${N_GEN:-200}"                 # truth images to generate
+N_GEN="${N_GEN:-50}"                  # truth images to generate
 GEN_BATCH="${GEN_BATCH:-8}"
-N_IMAGES="${N_IMAGES:-100}"           # truth images per study run
+N_IMAGES="${N_IMAGES:-50}"            # truth images per study run
 N_SAMPLES="${N_SAMPLES:-50}"
 SAMPLES_PER_BATCH="${SAMPLES_PER_BATCH:-10}"
 BOX="${BOX:-64}"                      # dead box (pixels), corner (Y0, X0)
 Y0="${Y0:-96}"
 X0="${X0:-96}"
-GEN_STEPS="${GEN_STEPS:-1000}"        # truth generation: FULL schedule (S=T),
-                                      # mirroring the calo design — only the
-                                      # inpainters subsample
-STEPS="${STEPS:-1000}"                # inpainting steps
-ALGORITHMS="${ALGORITHMS:-repaint ddnm ddrm mcg2 pigdm2}"
+# Study protocol mirrors the calorimeter study: generation and inpainting
+# on the SAME grid.  (calo: S = T = 8000 for both; celeb: S = 250 for both,
+# chosen for time constraints.)
+GEN_STEPS="${GEN_STEPS:-250}"
+STEPS="${STEPS:-250}"
+# RePaint last: ~10x the cost of the others
+ALGORITHMS="${ALGORITHMS:-ddnm ddrm mcg2 pigdm2 repaint}"
 PYTHON="${PYTHON:-python3}"
 DEVICE="${DEVICE:-cuda}"
 

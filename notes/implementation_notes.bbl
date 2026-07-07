@@ -5,12 +5,6 @@
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
 
-\bibitem[Ho et~al.(2020)Ho, Jain, and Abbeel]{ho2020ddpm}
-Jonathan Ho, Ajay Jain, and Pieter Abbeel.
-\newblock Denoising diffusion probabilistic models.
-\newblock \emph{Advances in Neural Information Processing Systems},
-  33:\penalty0 6840--6851, 2020.
-
 \bibitem[Torbunov et~al.(2024)Torbunov, Huang, Lin, Ren, Go, Rinn, Yu, Viren,
   and Huang]{torbunov2024calo}
 Dmitrii Torbunov, Yi~Huang, Meifeng Lin, Yihui Ren, Yeonju Go, Timothy Rinn,
@@ -19,6 +13,12 @@ Dmitrii Torbunov, Yi~Huang, Meifeng Lin, Yihui Ren, Yeonju Go, Timothy Rinn,
   and high-fidelity whole-event simulation in high-energy heavy-ion
   experiments.
 \newblock \emph{Physical Review C}, 110\penalty0 (3):\penalty0 034912, 2024.
+
+\bibitem[Ho et~al.(2020)Ho, Jain, and Abbeel]{ho2020ddpm}
+Jonathan Ho, Ajay Jain, and Pieter Abbeel.
+\newblock Denoising diffusion probabilistic models.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  33:\penalty0 6840--6851, 2020.
 
 \bibitem[Wang et~al.(2023)Wang, Yu, and Zhang]{wang2022ddnm}
 Yinhuai Wang, Jiwen Yu, and Jian Zhang.

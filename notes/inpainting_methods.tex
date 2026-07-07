@@ -45,7 +45,8 @@ which the denoised estimate follows by Tweedie's formula,
 
 For sampling efficiency the reverse process is run on a subsampled time
 grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$ obtained by rounding a
-linear spacing of $S$ points ($S = 1000$ unless stated otherwise); the
+linear spacing of $S$ points (the study runs generation and inpainting on
+the full grid, $S = T = 8000$, unless stated otherwise); the
 network is always conditioned on the \emph{original} time indices
 $\tau_k$.  Writing $t = \tau_k$ and $s = \tau_{k-1}$ for one reverse step,
 the effective per-step noise level is
