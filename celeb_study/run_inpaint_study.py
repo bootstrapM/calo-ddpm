@@ -62,6 +62,8 @@ def parse_cmdargs():
     p.add_argument('--device', default='cuda')
     p.add_argument('--bf16', action='store_true',
                    help='bf16 autocast for the no-grad algorithms')
+    p.add_argument('--compile', action='store_true',
+                   help='torch.compile the UNet (A100: ~20-40%% faster)')
     # algorithm hyperparameters (defaults mirror the calo study except the
     # data-range clamp, which is [-1, 1] here)
     p.add_argument('--repaint-resample', type=int,   default=10)
@@ -108,6 +110,8 @@ def main():
     os.makedirs(rundir, exist_ok=True)
 
     net, info = load_celeb_model(args.model_id, device)
+    if args.compile:
+        net = torch.compile(net)
     sched = celeb_schedule(info, S=args.steps, device=device)
     C, H, W = info['shape']
 

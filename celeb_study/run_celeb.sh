@@ -21,7 +21,9 @@ N_GEN="${N_GEN:-50}"                  # truth images to generate
 GEN_BATCH="${GEN_BATCH:-8}"
 N_IMAGES="${N_IMAGES:-50}"            # truth images per study run
 N_SAMPLES="${N_SAMPLES:-50}"
-SAMPLES_PER_BATCH="${SAMPLES_PER_BATCH:-10}"
+SAMPLES_PER_BATCH="${SAMPLES_PER_BATCH:-50}"        # no-grad algorithms
+SAMPLES_PER_BATCH_GRAD="${SAMPLES_PER_BATCH_GRAD:-24}"  # mcg2/pigdm2 (backward)
+EXTRA_FLAGS="${EXTRA_FLAGS:---bf16}"                # e.g. "--bf16 --compile"
 BOX="${BOX:-64}"                      # dead box (pixels), corner (Y0, X0)
 Y0="${Y0:-96}"
 X0="${X0:-96}"
@@ -42,19 +44,23 @@ if [[ " ${STAGES} " == *" generate "* ]]; then
     ${PYTHON} celeb_study/generate_images.py \
         --model-id "${MODEL_ID}" --outdir "${IMAGES_DIR}" --tag celebahq \
         -n "${N_GEN}" --batch "${GEN_BATCH}" -S "${GEN_STEPS}" \
-        --device "${DEVICE}" --bf16 --preview
+        --device "${DEVICE}" ${EXTRA_FLAGS} --preview
 fi
 
 if [[ " ${STAGES} " == *" inpaint "* ]]; then
     for alg in ${ALGORITHMS}; do
+        case "${alg}" in
+            mcg2|pigdm2|mcg|pigdm) spb="${SAMPLES_PER_BATCH_GRAD}" ;;
+            *)                     spb="${SAMPLES_PER_BATCH}" ;;
+        esac
         ${PYTHON} celeb_study/run_inpaint_study.py \
             --model-id "${MODEL_ID}" \
             --images "${IMAGES_DIR}/images_celebahq.npy" \
             --outdir "${STUDY_DIR}" \
             --algorithm "${alg}" --box "${BOX}" --y0 "${Y0}" --x0 "${X0}" \
             --n-images "${N_IMAGES}" --n-samples "${N_SAMPLES}" \
-            --samples-per-batch "${SAMPLES_PER_BATCH}" \
-            -S "${STEPS}" --device "${DEVICE}" --bf16
+            --samples-per-batch "${spb}" \
+            -S "${STEPS}" --device "${DEVICE}" ${EXTRA_FLAGS}
     done
 fi
 

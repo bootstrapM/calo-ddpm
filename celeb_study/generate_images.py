@@ -42,6 +42,8 @@ def parse_cmdargs():
     p.add_argument('--seed',     type=int, default=0)
     p.add_argument('--device',   default='cuda')
     p.add_argument('--bf16',     action='store_true')
+    p.add_argument('--compile',  action='store_true',
+                   help='torch.compile the UNet (A100: ~20-40%% faster)')
     p.add_argument('--preview',  action='store_true',
                    help='save a 4x4 grid PNG of the first images')
     return p.parse_args()
@@ -53,6 +55,8 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
 
     net, info = load_celeb_model(args.model_id, device)
+    if args.compile:
+        net = torch.compile(net)
     sched = celeb_schedule(info, S=args.steps, device=device)
     C, H, W = info['shape']
 
