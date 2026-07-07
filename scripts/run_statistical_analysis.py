@@ -108,6 +108,14 @@ def analyze_run(rundir, seed=0):
     samples_gev = np.load(os.path.join(rundir, 'results.npy'))  # (N,J,b,b)
     truth_gev   = np.load(os.path.join(rundir, 'truth.npy'))    # (N,b,b)
 
+    # 'gev' (calo, log-space analysis) or 'unit' (celeb study, [-1,1]);
+    # multi-channel results (N,J,C,b,b) fold channels into rows
+    space = meta.get('space', 'gev')
+    if samples_gev.ndim == 5:
+        n_, j_, c_, b_, _ = samples_gev.shape
+        samples_gev = samples_gev.reshape(n_, j_, c_ * b_, b_)
+        truth_gev   = truth_gev.reshape(truth_gev.shape[0], c_ * b_, b_)
+
     done = int(open(os.path.join(rundir, 'progress.txt'))
                .read().split('/')[0]) \
         if os.path.exists(os.path.join(rundir, 'progress.txt')) \
@@ -130,16 +138,22 @@ def analyze_run(rundir, seed=0):
         print(f'ERROR [{rundir}]: no finite images — skipping run')
         return None
 
-    n, j, b, _ = samples_gev.shape
+    n, j, br, bc = samples_gev.shape     # rows may be C*box (folded channels)
+    b = int(meta.get('box', bc))
     rng    = np.random.default_rng(seed)
     outdir = os.path.join(rundir, 'stats')
     os.makedirs(outdir, exist_ok=True)
 
-    s_log = to_log(samples_gev)
-    t_log = to_log(truth_gev)
+    if space == 'unit':                 # already a bounded model space
+        s_log = samples_gev.astype(np.float64)
+        t_log = truth_gev.astype(np.float64)
+    else:
+        s_log = to_log(samples_gev)
+        t_log = to_log(truth_gev)
 
     summary = {'rundir': rundir, 'algorithm': meta['algorithm'],
                'box': b, 'n_images': int(n), 'n_samples': int(j),
+               'space': space,
                'n_nonfinite_images_excluded': n_bad}
 
     # ---- SBC ranks --------------------------------------------------------
@@ -147,8 +161,8 @@ def analyze_run(rundir, seed=0):
     summary['sbc'] = {
         'pooled_chi2_pvalue': rank_uniformity_pvalue(ranks, j + 1),
         'per_pixel_chi2_pvalue': [
-            [rank_uniformity_pvalue(ranks[:, r, c], j + 1) for c in range(b)]
-            for r in range(b)
+            [rank_uniformity_pvalue(ranks[:, r, c], j + 1) for c in range(bc)]
+            for r in range(br)
         ],
     }
 
@@ -169,8 +183,8 @@ def analyze_run(rundir, seed=0):
     plt.close(fig)
 
     # ---- TARP (joint over box pixels, standardized log space) -------------
-    s_flat = s_log.reshape(n, j, b * b)
-    t_flat = t_log.reshape(n, b * b)
+    s_flat = s_log.reshape(n, j, br * bc)
+    t_flat = t_log.reshape(n, br * bc)
     mu  = s_flat.mean(axis=(0, 1))
     sd  = s_flat.std(axis=(0, 1)) + 1e-12
     alpha, ecp, tarp_dev, f_vals = tarp_ecp(
@@ -238,7 +252,8 @@ def analyze_run(rundir, seed=0):
     # ---- shrinkage diagnostic (GeV) ---------------------------------------
     pm  = samples_gev.mean(axis=1).ravel()
     tr  = truth_gev.ravel()
-    sel = tr > CLIP_MIN * 2
+    sel = tr > CLIP_MIN * 2 if space != 'unit' \
+        else np.ones_like(tr, dtype=bool)
     slope = float(np.polyfit(tr[sel], pm[sel], 1)[0]) if sel.sum() > 10 \
         else np.nan
     summary['shrinkage_slope_gev'] = slope

@@ -11,44 +11,38 @@
 \usepackage[numbers, sort&compress]{natbib}
 \usepackage{hyperref}
 
-\title{Implementation notes: training-free noise-free inpainting\\
-       of sPHENIX calorimeter images with a DDPM prior}
-\author{calo-ddpm inpainting study}
-\date{\today}
+%%%%% BEGIN MY LATEX COMMANDS%%%%%%%%%%%
+\def\({\left(}
+\def\){\right)}
+\def\[{\left[}
+\def\]{\right]}
 
+%%%%% END MY LATEX COMMANDS%%%%%%%%%%%
+
+\title{Implementation notes: Noise-free inpainting of sPHENIX\\
+        calorimeter images with a pre-trained DDPM prior}
+\date{\today}
+\author{Roli Esha, Himanshu Raj}
 \begin{document}
 \maketitle
+
+In these notes we spell out the details of the various in-painting algorithms based on a pre-trained un-conditional diffusion prior that we used in this work as well as how were they implemented.
 
 \section{Setting and notation}
 \label{sec:setup}
 
-\paragraph{Data and model space.}
-Calorimeter events are $24 \times 64$ tower-$E_T$ images in the
-$(\eta,\phi)$ plane, in GeV.  All sampling operates in the normalized
-log space $x = \ln\!\bigl(\max(E_T, E_{\min})\bigr)$,
-$E_{\min}=10^{-3}$~GeV; outputs are mapped back by $E_T = e^{x}$.
-The physical log-space range used by all clamps below is
-$[x_{\min}, x_{\max}] = [-7,\, 4]$ ($\approx$ 0.9~MeV to 55~GeV).
+\paragraph{Data:}
+From the pre-trained un-conditional diffusion model we sample 10,000 calorimeter events that are $24 \times 64$ gray-scale images. These are towers of $E_T$ in the $(\eta,\phi)$ plane, in GeV scale.  The sampling operation by the diffusion process operates in the normalized log space $x = \ln \(\max(E_T, E_{\min})\)$, $E_{\min}=10^{-3}$~GeV. The obtained sample are then mapped back by $E_T = e^{x}$ to the physical $E_T$ space. The physical log-space range used by all clamps below is $[x_{\min}, x_{\max}] = [-7,\, 4]$ ($\approx$ 0.9~MeV to 55~GeV). From \cite{torbunov2024calo} we obtained this data for both centrality 0 and centrality 4 collisions. 
 
 \paragraph{Diffusion prior.}
-One pre-trained DDPM~\cite{ho2020ddpm} per centrality class
-\cite{torbunov2024calo}, used frozen.  Variance-preserving forward
-process with $T = 8000$ and linear $\beta_t$ from $b/T$ to $1000\,b/T$,
-$b = 0.02$ (0--10\%) or $0.10$ (40--50\%); the schedule is reconstructed
-exactly from each checkpoint's training configuration.  With
-$\bar\alpha_t = \prod_{i \le t} (1 - \beta_i)$ we abbreviate
+Here we quickly outline the diffusion model processes. In the variance-preserving form, forward process is a sequence of successive noising process with $T = 8000$ and linear $\beta_t$ from $b/T$ to $1000\,b/T$, $b = 0.02$ (0--10\%) or $0.10$ (40--50\%); the schedule is reconstructed exactly from each checkpoint's training configuration.  With $\bar\alpha_t = \prod_{i \le t} (1 - \beta_i)$ we abbreviate
 \begin{equation}
   \bar s_t = \sqrt{\bar\alpha_t}, \qquad
   \bar v_t = 1 - \bar\alpha_t ,
 \end{equation}
-stored in arrays of length $S{+}1$ with an identity transition padded at
-index~0 ($\bar s_0 = 1$, $\bar v_0 = 0$).  Sampling runs on a subsampled
-grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$
-($\tau = \mathrm{round}(\mathrm{linspace}(1,T,S))$, $S = 1000$ for the
-study); the network is always conditioned on the \emph{original} indices
-$\tau_k$.  Below, one reverse step goes from level $s \equiv \tau_k$ to
-$s{-}1 \equiv \tau_{k-1}$, with all quantities indexed by the subsampled
-position.
+stored in arrays of length $S{+}1$ with an identity transition padded at index~0 ($\bar s_0 = 1$, $\bar v_0 = 0$).  Sampling runs on a subsampled grid $0 = \tau_0 < \tau_1 = 1 < \dots < \tau_S = T$ ($\tau = \mathrm{round}(\mathrm{linspace}(1,T,S))$, $S = 1000$ for the study); the network is always conditioned on the \emph{original} indices $\tau_k$.  Below, one reverse step goes from level $s \equiv \tau_k$ to $s{-}1 \equiv \tau_{k-1}$, with all quantities indexed by the subsampled position.
+
+We took the trained weights of the pre-trained DDPM~\cite{ho2020ddpm} per centrality class \cite{torbunov2024calo}. 
 
 \paragraph{Denoiser and transport.}
 The $\epsilon$-network gives the Tweedie estimate and the (jump-aware)

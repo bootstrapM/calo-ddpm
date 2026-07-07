@@ -1,0 +1,5 @@
+# Extra dependencies for the parallel CelebA study (celeb_study/):
+#   pip install -r requirements-celeb.txt
+diffusers>=0.31
+huggingface_hub
+safetensors
