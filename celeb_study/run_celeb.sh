@@ -25,7 +25,10 @@ SAMPLES_PER_BATCH="${SAMPLES_PER_BATCH:-10}"
 BOX="${BOX:-64}"                      # dead box (pixels), corner (Y0, X0)
 Y0="${Y0:-96}"
 X0="${X0:-96}"
-STEPS="${STEPS:-1000}"
+GEN_STEPS="${GEN_STEPS:-1000}"        # truth generation: FULL schedule (S=T),
+                                      # mirroring the calo design — only the
+                                      # inpainters subsample
+STEPS="${STEPS:-1000}"                # inpainting steps
 ALGORITHMS="${ALGORITHMS:-repaint ddnm ddrm mcg2 pigdm2}"
 PYTHON="${PYTHON:-python3}"
 DEVICE="${DEVICE:-cuda}"
@@ -36,7 +39,7 @@ echo "stages: ${STAGES} | model: ${MODEL_ID} | root: ${ROOT}"
 if [[ " ${STAGES} " == *" generate "* ]]; then
     ${PYTHON} celeb_study/generate_images.py \
         --model-id "${MODEL_ID}" --outdir "${IMAGES_DIR}" --tag celebahq \
-        -n "${N_GEN}" --batch "${GEN_BATCH}" -S "${STEPS}" \
+        -n "${N_GEN}" --batch "${GEN_BATCH}" -S "${GEN_STEPS}" \
         --device "${DEVICE}" --bf16 --preview
 fi
 
