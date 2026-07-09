@@ -35,8 +35,9 @@ from calo_inpaint.ddpm_sampler import (
 from calo_inpaint.masks import square_mask
 from calo_inpaint.inpainting import INPAINTERS
 from calo_inpaint.guided import GUIDED_INPAINTERS
+from calo_inpaint.baselines import BASELINE_INPAINTERS
 
-ALL_INPAINTERS = {**INPAINTERS, **GUIDED_INPAINTERS}
+ALL_INPAINTERS = {**INPAINTERS, **GUIDED_INPAINTERS, **BASELINE_INPAINTERS}
 
 
 def parse_cmdargs():

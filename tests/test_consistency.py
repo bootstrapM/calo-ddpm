@@ -286,11 +286,64 @@ def test_guided_v2():
     check('pigdm2: K-image batched path exact known region', kn < 1e-4)
 
 
+def test_baselines():
+    """Model-free baselines (calo_inpaint.baselines)."""
+    from calo_inpaint.baselines import BASELINE_INPAINTERS
+
+    g = torch.Generator().manual_seed(123)
+    x_true = MU0 + SIGMA0 * torch.randn(1, H, W, generator=g)
+    box    = 3
+    mask   = square_mask(box, 4, 5, height=H, width=W, device=DEVICE)
+    y      = x_true * mask
+
+    # 'noise' must reproduce the EMPIRICAL known-pixel statistics of each
+    # image (the fill uses the plug-in estimates, not the prior parameters)
+    known_mu = ((x_true[0] * mask[0]).sum() / mask[0].sum()).item()
+    known_sd = torch.sqrt(
+        (((x_true[0] - known_mu) * mask[0]) ** 2).sum() / mask[0].sum()
+    ).item()
+    out  = BASELINE_INPAINTERS['noise'](device=DEVICE, seed=7) \
+        .inpaint(y, mask, 3000)
+    dead = out[:, 0][:, 4:4 + box, 5:5 + box]
+    m, s_ = dead.mean().item(), dead.std().item()
+    check('noise baseline: matches known-pixel stats',
+          abs(m - known_mu) < 0.05 and abs(s_ / known_sd - 1) < 0.03,
+          f'mean={m:.3f} (exp {known_mu:.3f}) std={s_:.3f} '
+          f'(exp {known_sd:.3f})')
+    kn = ((out[:, 0] - x_true) * mask[0]).abs().max().item()
+    check('noise baseline: known region exact', kn < 1e-6)
+    o1 = BASELINE_INPAINTERS['noise'](device=DEVICE, seed=11).inpaint(y, mask, 8)
+    o2 = BASELINE_INPAINTERS['noise'](device=DEVICE, seed=11).inpaint(y, mask, 8)
+    check('noise baseline: reproducible given seed', torch.equal(o1, o2))
+
+    # 'meanfill': deterministic, zero width, mean = known-pixel mean
+    # (std threshold at float32 accumulation noise, not exact zero)
+    out  = BASELINE_INPAINTERS['meanfill'](device=DEVICE, seed=7) \
+        .inpaint(y, mask, 8)
+    dead = out[:, 0][:, 4:4 + box, 5:5 + box]
+    check('meanfill baseline: constant fill at known mean',
+          dead.std().item() < 1e-5
+          and abs(dead.mean().item() - known_mu) < 1e-4,
+          f'std={dead.std().item():.1e} mean={dead.mean().item():.4f}')
+    kn = ((out[:, 0] - x_true) * mask[0]).abs().max().item()
+    check('meanfill baseline: known region exact', kn < 1e-6)
+
+    # K-image batching path
+    truths = MU0 + SIGMA0 * torch.randn(
+        2, 1, H, W, generator=torch.Generator().manual_seed(3))
+    outK = BASELINE_INPAINTERS['noise'](device=DEVICE, seed=5).inpaint(
+        truths * mask, mask, 100).reshape(2, 100, 1, H, W)
+    kn = max(((outK[k, :, 0] - truths[k, 0]) * mask[0]).abs().max().item()
+             for k in range(2))
+    check('noise baseline: K-image batched path exact', kn < 1e-6)
+
+
 if __name__ == '__main__':
     torch.manual_seed(0)
     test_schedule()
     test_unconditional()
     test_inpainters()
     test_guided_v2()
+    test_baselines()
     print(f'\n{"ALL TESTS PASSED" if n_fail == 0 else f"{n_fail} FAILURES"}')
     sys.exit(1 if n_fail else 0)
