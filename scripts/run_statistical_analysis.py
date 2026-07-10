@@ -295,7 +295,7 @@ def main():
         summary, cov, ranks, j = result
         all_summaries.append(summary)
         compare.append((summary['algorithm'], summary['box'],
-                        cov, ranks, j))
+                        cov, ranks, j, rd))
 
     if len(compare) > 1:
         outdir = args.compare_outdir or os.path.commonpath(args.rundirs)
@@ -303,8 +303,12 @@ def main():
 
         fig, axes = plt.subplots(1, 2, figsize=(9.5, 4),
                                  constrained_layout=True)
-        for name, box, (lv, cov), ranks, j in compare:
+        base_labs = [f'{n_} box={b_}' for n_, b_, _, _, _, _ in compare]
+        for (name, box, (lv, cov), ranks, j, rd) in compare:
             lab = f'{name} box={box}'
+            if base_labs.count(lab) > 1:      # sweep points: disambiguate
+                lab += ' ' + os.path.basename(os.path.dirname(
+                    os.path.abspath(rd)))
             axes[0].plot(lv, cov, 'o-', label=lab)
             # rank ECDF deviation from uniform
             r = np.sort(ranks.ravel()) / j
